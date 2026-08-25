@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: #F5F7F3;
+  font-family: 'Inter', sans-serif;
+  color: #0B1512;
+}
+
+/* charge-bar signature element: used on KPI cards + status pills across the app */
+.charge-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: #1E332B;
+  overflow: hidden;
+}
+.charge-bar > span {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #1FAA59, #B6FF3C);
+  border-radius: 999px;
+  transition: width .5s ease;
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #1E332B33; border-radius: 999px; }
