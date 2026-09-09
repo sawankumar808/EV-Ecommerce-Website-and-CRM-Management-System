@@ -37,15 +37,7 @@ export default function Scooters() {
 
   const [form, setForm] = useState(initialFormState);
 
-  const load = () => {
-    client
-      .get("/scooters/")
-      .then((r) => setItems(r.data.results || r.data))
-      .catch((e) => console.error("Failed to load scooters:", e));
-  };
-
-  useEffect(() => {
-    load();
+  const fetchDropdowns = () => {
     Promise.all([
       client.get("/customers/"),
       client.get("/vendors/"),
@@ -57,6 +49,19 @@ export default function Scooters() {
         setBatteries(b.data.results || b.data);
       })
       .catch((e) => console.error("Failed to load dropdown data:", e));
+  };
+
+  const load = () => {
+    client
+      .get("/scooters/")
+      .then((r) => setItems(r.data.results || r.data))
+      .catch((e) => console.error("Failed to load scooters:", e));
+    
+    fetchDropdowns();
+  };
+
+  useEffect(() => {
+    load();
   }, []);
 
   const handleOpenAddModal = () => {
@@ -89,17 +94,23 @@ export default function Scooters() {
   const doAssign = async (e) => {
     e.preventDefault();
     setErr("");
+    
+    if (!assign?.battery) {
+      setErr("Please select a battery.");
+      return;
+    }
+
     try {
       await client.post(`/scooters/${assign.id}/assign_battery/`, {
-        battery: assign.battery,
+        battery_id: Number(assign.battery),
       });
       setAssign(null);
-      load();
+      load(); // Scooter list + Available batteries list update hongi
     } catch (e) {
       setErr(
         typeof e.response?.data === "object"
           ? JSON.stringify(e.response.data)
-          : e.response?.data || e.message
+          : e.response?.data?.error || e.message
       );
     }
   };
@@ -129,6 +140,7 @@ export default function Scooters() {
                 "Brand / Model",
                 "Customer",
                 "Vendor",
+                "Installed Battery",
                 "Status",
                 "Action",
               ].map((x) => (
@@ -156,6 +168,9 @@ export default function Scooters() {
                 <td className="px-4 py-3 text-muted">
                   {s.vendor_name || "—"}
                 </td>
+                <td className="px-4 py-3 font-mono text-xs font-semibold text-emerald-600">
+                  {s.installed_battery || "—"}
+                </td>
                 <td className="px-4 py-3">
                   <StatusBadge status={s.status} />
                 </td>
@@ -167,14 +182,14 @@ export default function Scooters() {
                       setAssign({ ...s, battery: "" });
                     }}
                   >
-                    Assign Battery
+                    {s.installed_battery ? "Replace Battery" : "Assign Battery"}
                   </Button>
                 </td>
               </tr>
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-muted">
+                <td colSpan={8} className="text-center py-8 text-muted">
                   No scooters found.
                 </td>
               </tr>
