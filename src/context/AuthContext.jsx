@@ -41,7 +41,7 @@ export function AuthProvider({ children }) {
   // Updated to accept (username, password, role) directly
   const login = async (username, password, selectedRole) => {
 
-    const res = await client.post("/auth/login/", {username, password});
+    const res = await client.post("/api/auth/login/", {username, password});
     
     // Check all common JWT key names
     const token = res.data.access || res.data.token || res.data.access_token;
