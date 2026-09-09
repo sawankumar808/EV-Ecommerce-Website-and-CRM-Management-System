@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      const res = await client.get("/auth/me/", {
+      const res = await client.get("/api/auth/me/", {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(res.data);
@@ -54,13 +54,13 @@ export function AuthProvider({ children }) {
       client.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       
       // Fetch user profile after storing token
-      const userRes = await client.get("/auth/me/");
+      const userRes = await client.get("/api/auth/me/");
       const actualUser = userRes.data;
        
        if (selectedRole && actualUser.role!==selectedRole){
         localStorage.removeItem("access_token");
-        delete client.defaults.headers.commom["Authorization"];
-        throw new Error(`Account mismath: This user is not registered as ${selectedRole}.`);
+        delete client.defaults.headers.common["Authorization"];
+        throw new Error(`Account mismatch: This user is not registered as ${selectedRole}.`);
 
        }
        setUser(actualUser);
