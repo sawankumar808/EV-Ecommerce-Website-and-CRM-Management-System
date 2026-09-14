@@ -34,9 +34,9 @@ export default function Login() {
       const userRole = userProfile?.role || role;
 
       if (userRole === "VENDOR") {
-        navigate("/vendor-dashboard", { replace: true });
+        navigate("/vendor/dashboard", { replace: true });
       } else {
-        navigate("/crm", { replace: true });
+        navigate("/crm/dashboard", { replace: true });
       }
     } catch (err) {
       console.error("Login Submission Error:", err);

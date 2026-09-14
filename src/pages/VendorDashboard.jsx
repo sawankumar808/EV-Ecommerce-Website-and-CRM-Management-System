@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Zap,
   LogOut,
@@ -18,10 +18,12 @@ import { useAuth } from "../context/AuthContext";
 import { Card, StatusBadge } from "../components/ui";
 
 export default function VendorDashboard() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
   const [vendor, setVendor] = useState(null);
   const [products, setProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
-
   const [tab, setTab] = useState("overview");
 
   const [customerForm, setCustomerForm] = useState({
@@ -37,19 +39,27 @@ export default function VendorDashboard() {
   const [customerMsg, setCustomerMsg] = useState("");
   const [error, setError] = useState("");
 
-  const { logout } = useAuth();
+  // FIX: Agar user ADMIN ya SALES hai, toh use Vendor Dashboard access mat do, CRM par bhej do
+  useEffect(() => {
+    if (user && (user.role === "ADMIN" || user.role === "SALES")) {
+      navigate("/crm/dashboard", { replace: true });
+    }
+  }, [user, navigate]);
 
   useEffect(() => {
-    client
-      .get("/vendor/me/")
-      .then((r) => setVendor(r.data))
-      .catch((e) => {
-        setError(
-          e.response?.data?.detail ||
-            "Could not load your vendor profile."
-        );
-      });
-  }, []);
+    // Agar user admin/sales nahi hai tabhi vendor profile load karo
+    if (user && user.role === "VENDOR") {
+      client
+        .get("/vendor/me/")
+        .then((r) => setVendor(r.data))
+        .catch((e) => {
+          setError(
+            e.response?.data?.detail ||
+              "Could not load your vendor profile."
+          );
+        });
+    }
+  }, [user]);
 
   useEffect(() => {
     if (
@@ -67,20 +77,6 @@ export default function VendorDashboard() {
         );
     }
   }, [tab, vendor]);
-
-  const getImageUrl = (img) => {
-    if (!img) return null;
-
-    if (img.startsWith("http")) return img;
-
-    const base =
-      import.meta.env.VITE_API_URL ||
-      "http://localhost:8000/api";
-
-    const serverUrl = base.replace(/\/api\/?$/, "");
-
-    return `${serverUrl}${img.startsWith("/") ? "" : "/"}${img}`;
-  };
 
   if (error) {
     return (
