@@ -12,7 +12,7 @@ const navItems = [
 
 export default function PublicLayout() {
   const [open, setOpen] = useState(false);
-  const { user, vendorProfile } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   return (
@@ -68,11 +68,11 @@ export default function PublicLayout() {
           <div className="md:hidden bg-ink-soft border-t border-ink-border px-4 py-4 space-y-3">
             {navItems.map((item) => (
               <NavLink key={item.to} to={item.to} end={item.to === "/"} onClick={() => setOpen(false)}
-                className="block text-sm font-medium text-white/80">
+                className="block text-sm font-medium text-white/85">
                 {item.label}
               </NavLink>
             ))}
-            <Link to="/login" onClick={() => setOpen(false)} className="block text-sm font-medium text-white/80">Vendor Login</Link>
+            <Link to="/login" onClick={() => setOpen(false)} className="block text-sm font-medium text-white/85">Login</Link>
             <Link to="/vendor/register" onClick={() => setOpen(false)} className="block text-sm font-medium text-volt">Vendor Registration</Link>
           </div>
         )}

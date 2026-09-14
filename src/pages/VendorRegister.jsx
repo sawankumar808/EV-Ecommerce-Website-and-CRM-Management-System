@@ -19,10 +19,10 @@ export default function VendorRegister() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Load Salespersons for dropdown selection
+    // FIX: Added /api/ prefix so it doesn't return 404
     async function loadSalesTeam() {
       try {
-        const res = await client.get("/users/?role=SALES");
+        const res = await client.get("/api/users/?role=SALES");
         setSalesPersons(res.data.results || res.data);
       } catch {
         setSalesPersons([]);
@@ -46,7 +46,6 @@ export default function VendorRegister() {
     setErrors({});
     setLoading(true);
 
-    // Build FormData to upload both JSON text fields and PDF/Image documents
     const formData = new FormData();
     Object.keys(form).forEach((key) => {
       formData.append(key, form[key]);
@@ -57,7 +56,8 @@ export default function VendorRegister() {
     if (files.address_proof) formData.append("address_document", files.address_proof);
 
     try {
-      await client.post("/vendor/register/", formData, {
+      // FIX: Added /api/ prefix
+      await client.post("/api/vendor/register/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setDone(true);
@@ -141,7 +141,7 @@ export default function VendorRegister() {
                     <option value="">None / Unassigned</option>
                     {salesPersons.map((sp) => (
                       <option key={sp.id} value={sp.id}>
-                        {sp.first_name ? `${sp.first_name} ${sp.last_name}` : sp.username}
+                        {sp.first_name ? `${sp.first_name} ${sp.last_name || ""}` : sp.username}
                       </option>
                     ))}
                   </select>

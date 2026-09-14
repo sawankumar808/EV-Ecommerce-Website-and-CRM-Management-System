@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, Building, FileText, ShoppingBag, Battery, Users, ShieldAlert, Tag, History as HistoryIcon } from "lucide-react";
+import { ArrowLeft, Save, Building, FileText, ShoppingBag, Battery, Users, History as HistoryIcon, ExternalLink, Download } from "lucide-react";
 import client from "../api/client";
 import { Card, PageHeader, StatusBadge, Button } from "../components/ui";
 
@@ -9,10 +9,14 @@ export default function VendorDetail() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // URL path ke basis par active tab derive karein
   const getInitialTab = () => {
-    if (location.pathname.endsWith("/edit")) return "edit";
-    if (location.pathname.endsWith("/history")) return "history";
+    const path = location.pathname;
+    if (path.endsWith("/edit")) return "edit";
+    if (path.endsWith("/history")) return "history";
+    if (path.endsWith("/documents")) return "documents";
+    if (path.endsWith("/sales")) return "sales";
+    if (path.endsWith("/batteries")) return "batteries";
+    if (path.endsWith("/customers")) return "customers";
     return "info";
   };
 
@@ -20,7 +24,7 @@ export default function VendorDetail() {
   const [vendor, setVendor] = useState(null);
   const [formData, setFormData] = useState({});
   const [history, setHistory] = useState([]);
-  const [related,setRelated]=useState({sales:[],batteries:[],customers:[]});
+  const [related, setRelated] = useState({ sales: [], batteries: [], customers: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,15 +38,24 @@ export default function VendorDetail() {
   const fetchVendorDetails = async () => {
     setLoading(true);
     try {
-      const res = await client.get(`/vendors/${id}/`);
+      const res = await client.get(`/api/vendors/${id}/`);
       setVendor(res.data);
       setFormData(res.data);
 
-      // Fetch complete vendor history
-      const historyRes = await client.get(`/vendors/${id}/history/`).catch(() => ({ data: [] }));
+      const historyRes = await client.get(`/api/vendors/${id}/history/`).catch(() => ({ data: [] }));
       setHistory(Array.isArray(historyRes.data) ? historyRes.data : historyRes.data.results || []);
-      const [sales,batteries,customers]=await Promise.all([client.get(`/sales/?vendor=${id}`).catch(()=>({data:[]})),client.get(`/batteries/?vendor=${id}`).catch(()=>({data:[]})),client.get(`/customers/?vendor=${id}`).catch(()=>({data:[]}))]);
-      setRelated({sales:sales.data.results||sales.data,batteries:batteries.data.results||batteries.data,customers:customers.data.results||customers.data});
+      
+      const [sales, batteries, customers] = await Promise.all([
+        client.get(`/api/sales/?vendor=${id}`).catch(() => ({ data: [] })),
+        client.get(`/api/batteries/?vendor=${id}`).catch(() => ({ data: [] })),
+        client.get(`/api/customers/?vendor=${id}`).catch(() => ({ data: [] }))
+      ]);
+      
+      setRelated({
+        sales: sales.data.results || sales.data || [],
+        batteries: batteries.data.results || batteries.data || [],
+        customers: customers.data.results || customers.data || []
+      });
     } catch (err) {
       console.error("Failed to load vendor detail", err);
     } finally {
@@ -54,13 +67,17 @@ export default function VendorDetail() {
     setActiveTab(tabKey);
     if (tabKey === "edit") navigate(`/crm/vendors/${id}/edit`);
     else if (tabKey === "history") navigate(`/crm/vendors/${id}/history`);
+    else if (tabKey === "documents") navigate(`/crm/vendors/${id}/documents`);
+    else if (tabKey === "sales") navigate(`/crm/vendors/${id}/sales`);
+    else if (tabKey === "batteries") navigate(`/crm/vendors/${id}/batteries`);
+    else if (tabKey === "customers") navigate(`/crm/vendors/${id}/customers`);
     else navigate(`/crm/vendors/${id}`);
   };
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     try {
-      await client.patch(`/vendors/${id}/`, formData);
+      await client.patch(`/api/vendors/${id}/`, formData);
       alert("Vendor details updated successfully!");
       navigate(`/crm/vendors/${id}`);
     } catch (err) {
@@ -82,6 +99,23 @@ export default function VendorDetail() {
     { key: "history", label: "Complete History", icon: HistoryIcon },
   ];
 
+  const getFileUrl = (url) => {
+    if (!url) return "#";
+    if (url.startsWith("http")) return url;
+    const baseURL = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, "") : "http://localhost:8000";
+    return `${baseURL}${url.startsWith("/") ? "" : "/"}${url}`;
+  };
+
+  // View Handler: Agar file Word/Excel jaisi hai aur browser download kar raha hai, toh user ko alert dekar guide kar sakte hain ya direct open karein
+  const handleViewFile = (fileUrl, title) => {
+    if (fileUrl.match(/\.(docx|doc|xlsx|xls)$/i)) {
+      alert(`"${title}" ek Word/Excel file hai. Local server par direct view support nahi karta, isliye yeh download hogi. Aap chahein toh PDF format mein upload kar sakte hain taaki seedha browser mein view ho sake.`);
+    }
+    window.open(fileUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const documentsList = Array.isArray(vendor.documents) ? vendor.documents : [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -95,13 +129,13 @@ export default function VendorDetail() {
         />
       </div>
 
-      {/* Requirement Document Section 9: Navigation Tabs */}
       <div className="flex border-b border-black/10 overflow-x-auto gap-2">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.key}
+              type="button"
               onClick={() => handleTabChange(tab.key)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
                 activeTab === tab.key
@@ -116,7 +150,6 @@ export default function VendorDetail() {
         })}
       </div>
 
-      {/* Tab Content 1: Information */}
       {activeTab === "info" && (
         <Card className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
@@ -146,7 +179,6 @@ export default function VendorDetail() {
         </Card>
       )}
 
-      {/* Tab Content 2: Edit Form */}
       {activeTab === "edit" && (
         <Card className="p-6">
           <form onSubmit={handleUpdate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -194,78 +226,75 @@ export default function VendorDetail() {
         </Card>
       )}
 
-      {/* Tab Content 3: Documents (Section 4 & 9 Requirement) */}
       {activeTab === "documents" && (
         <Card className="p-6">
           <h3 className="font-semibold text-base mb-4 text-ink">Uploaded Business Documents</h3>
           
-          {vendor.documents && vendor.documents.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {vendor.documents.map((doc, idx) => (
-                <div key={idx} className="p-4 border border-black/10 rounded-lg flex items-center justify-between bg-surface/30">
-                  <div className="flex items-center gap-3">
-                    <FileText className="text-emerald-600" size={24} />
-                    <div>
-                      <p className="font-medium text-sm text-ink">{doc.document_type || doc.name || `Document #${idx + 1}`}</p>
-                      <p className="text-xs text-muted">Uploaded on: {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "N/A"}</p>
-                    </div>
-                  </div>
-                  {doc.file || doc.file_url ? (
-                    <a
-                      href={doc.file || doc.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-md hover:bg-emerald-100 transition-colors"
-                    >
-                      View / Download
-                    </a>
-                  ) : (
-                    <span className="text-xs text-muted">No File Attached</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {vendor.gst_document && (
-                <div className="p-4 border border-black/10 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="text-emerald-600" size={24} />
-                    <div>
-                      <p className="font-medium text-sm text-ink">GST Document</p>
-                      <p className="text-xs text-muted">GST Number: {vendor.gst_number || "N/A"}</p>
-                    </div>
-                  </div>
-                  <a href={vendor.gst_document} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-md hover:bg-emerald-100">
-                    View File
-                  </a>
-                </div>
-              )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {documentsList.length > 0 ? (
+              documentsList.map((doc, idx) => {
+                const fileUrl = getFileUrl(doc.file || doc.file_url || doc.document);
+                
+                let docTitle = "Business Document";
+                let docSubText = `Uploaded on: ${doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "N/A"}`;
 
-              {vendor.pan_document && (
-                <div className="p-4 border border-black/10 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="text-emerald-600" size={24} />
-                    <div>
-                      <p className="font-medium text-sm text-ink">PAN Document</p>
-                      <p className="text-xs text-muted">PAN Number: {vendor.pan_number || "N/A"}</p>
-                    </div>
-                  </div>
-                  <a href={vendor.pan_document} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-md hover:bg-emerald-100">
-                    View File
-                  </a>
-                </div>
-              )}
+                if (idx === 0) {
+                  docTitle = "GST Certificate";
+                  docSubText = vendor.gst_number ? `GST: ${vendor.gst_number}` : "GST Document";
+                } else if (idx === 1) {
+                  docTitle = "PAN Card";
+                  docSubText = vendor.pan_number ? `PAN: ${vendor.pan_number}` : "PAN Document";
+                } else if (idx === 2) {
+                  docTitle = "Address Proof";
+                  docSubText = vendor.city ? `City: ${vendor.city}` : "Address Verification";
+                }
 
-              {!vendor.gst_document && !vendor.pan_document && (
-                <p className="text-muted text-sm col-span-2">No documents uploaded during registration for this vendor.</p>
-              )}
-            </div>
-          )}
+                return (
+                  <div key={idx} className="p-4 border border-black/10 rounded-lg flex items-center justify-between bg-surface/30">
+                    <div className="flex items-center gap-3">
+                      <FileText className="text-emerald-600" size={24} />
+                      <div>
+                        <p className="font-medium text-sm text-ink">{docTitle}</p>
+                        <p className="text-xs text-muted">{docSubText}</p>
+                      </div>
+                    </div>
+                    {fileUrl !== "#" ? (
+                      <div className="flex items-center gap-2">
+                        {/* View Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleViewFile(fileUrl, docTitle)}
+                          className="px-2.5 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          title="View Document"
+                        >
+                          <ExternalLink size={12} /> View
+                        </button>
+
+                        {/* Download Button */}
+                        <a 
+                          href={fileUrl} 
+                          download
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-md hover:bg-emerald-100 transition-colors flex items-center gap-1"
+                          title="Download Document"
+                        >
+                          <Download size={12} /> Download
+                        </a>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted">No File Attached</span>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-muted text-sm col-span-2 py-4 text-center">No documents uploaded during registration for this vendor.</p>
+            )}
+          </div>
         </Card>
       )}
 
-      {/* Tab Content 4: Complete History Timeline (Section 26 Requirement) */}
       {activeTab === "history" && (
         <Card className="p-6">
           <h3 className="font-semibold text-base mb-4">Vendor Lifecycle & Activity History</h3>

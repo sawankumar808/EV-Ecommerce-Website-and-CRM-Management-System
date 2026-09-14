@@ -10,6 +10,7 @@ export default function Quotations() {
   const [showModal, setShowModal] = useState(false);
 
   const [currentUser, setCurrentUser] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -23,6 +24,7 @@ export default function Quotations() {
 
   const syncUserContext = () => {
     let username = "";
+    let userId = "";
     let role = "SALES";
     let isSuper = false;
 
@@ -48,6 +50,7 @@ export default function Quotations() {
               parsed.first_name ||
               parsed.email ||
               username;
+            userId = parsed.id || userId;
             if (parsed.role) role = parsed.role;
             if (parsed.is_superuser || parsed.is_staff) isSuper = true;
           } catch (e) {}
@@ -56,6 +59,9 @@ export default function Quotations() {
         }
       }
     }
+
+    const storedId = localStorage.getItem("user_id") || localStorage.getItem("id");
+    if (storedId) userId = storedId;
 
     const storedRole = (
       localStorage.getItem("role") ||
@@ -76,13 +82,14 @@ export default function Quotations() {
     }
 
     setCurrentUser(username);
+    setCurrentUserId(userId);
     setIsAdmin(adminCheck);
 
-    return { username, adminCheck };
+    return { username, userId, adminCheck };
   };
 
   const fetchSalesTeam = async () => {
-    const endpoints = ["/sales-team/", "/users/", "/crm/users/"];
+    const endpoints = ["/api/sales-team/", "/api/users/", "/api/crm/users/", "/sales-team/", "/users/"];
 
     let rawUsers = [];
 
@@ -99,32 +106,19 @@ export default function Quotations() {
       }
     }
 
-    // Dynamic Filter: Includes Admin + All current & future Sales accounts
     const salesOnly = rawUsers.filter((u) => {
-      const uname = (u.username || u.name || u.first_name || "").toLowerCase();
-      const email = (u.email || "").toLowerCase();
       const role = (u.role || u.user_role || u.type || "").toString().toLowerCase();
-
-      // Exclude Vendors or internal non-crm system accounts
       if (role.includes("vendor") || role.includes("supplier")) {
         return false;
       }
-
-      // Exclude old buggy test accounts
-      if (uname === "arun" || uname === "shubham") {
-        return false;
-      }
-
-      // Allow Admin + Active Sales Staff (sawankumar, raju, admin, future sales users)
       return true;
     });
 
-    // Remove duplicates by Unique Username / Email
     const uniqueUsers = [];
     const seenKeys = new Set();
 
     salesOnly.forEach((u) => {
-      const identifier = (u.username || u.email || "").toLowerCase();
+      const identifier = (u.id || u.username || u.email || "").toString().toLowerCase();
       if (identifier && !seenKeys.has(identifier)) {
         seenKeys.add(identifier);
         uniqueUsers.push(u);
@@ -135,7 +129,7 @@ export default function Quotations() {
   };
 
   const fetchQuotations = async () => {
-    const endpoints = ["/quotations/", "/crm/quotations/", "/api/quotations/"];
+    const endpoints = ["/api/quotations/", "/api/crm/quotations/", "/quotations/", "/crm/quotations/"];
     for (const url of endpoints) {
       try {
         const res = await client.get(url);
@@ -149,10 +143,14 @@ export default function Quotations() {
 
   const fetchData = async () => {
     setLoading(true);
-    syncUserContext();
+    const userCtx = syncUserContext();
     const [quotes, team] = await Promise.all([fetchQuotations(), fetchSalesTeam()]);
     setQuotations(quotes);
     setSalesTeam(team);
+
+    if (!userCtx.adminCheck && userCtx.userId) {
+      setFormData((prev) => ({ ...prev, sales_person: userCtx.userId }));
+    }
     setLoading(false);
   };
 
@@ -161,11 +159,11 @@ export default function Quotations() {
   }, []);
 
   const handleOpenModal = () => {
-    syncUserContext();
+    const userCtx = syncUserContext();
     setFormData({
       quotation_number: `QT-${Math.floor(1000 + Math.random() * 9000)}`,
       customer_name: "",
-      sales_person: "",
+      sales_person: !userCtx.adminCheck && userCtx.userId ? userCtx.userId : "",
       total_amount: "",
       status: "DRAFT",
       version: 1,
@@ -179,36 +177,44 @@ export default function Quotations() {
     );
     try {
       await client
-        .patch(`/quotations/${id}/`, { status: newStatus })
-        .catch(() => client.patch(`/crm/quotations/${id}/`, { status: newStatus }));
+        .patch(`/api/quotations/${id}/`, { status: newStatus })
+        .catch(() => client.patch(`/quotations/${id}/`, { status: newStatus }));
     } catch (err) {
-      alert("Status update fail hua.");
+      alert("Status update failed.");
       fetchData();
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Is quotation ko delete karna chahte hain?")) return;
+    if (!window.confirm("Are you sure you want to delete this quotation?")) return;
     try {
       await client
-        .delete(`/quotations/${id}/`)
-        .catch(() => client.delete(`/crm/quotations/${id}/`));
+        .delete(`/api/quotations/${id}/`)
+        .catch(() => client.delete(`/quotations/${id}/`));
       setQuotations((prev) => prev.filter((q) => q.id !== id));
     } catch (err) {
-      alert("Quotation delete karne me error aaya.");
+      alert("Error deleting quotation.");
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = { ...formData };
+      if (payload.sales_person) {
+        payload.sales_person = parseInt(payload.sales_person, 10);
+      }
+      if (payload.total_amount) {
+        payload.total_amount = parseFloat(payload.total_amount);
+      }
+
       await client
-        .post("/quotations/", formData)
-        .catch(() => client.post("/crm/quotations/", formData));
+        .post("/api/quotations/", payload)
+        .catch(() => client.post("/quotations/", payload));
       setShowModal(false);
       fetchData();
     } catch (err) {
-      alert("Quotation save error: " + (err.response?.data?.detail || err.message));
+      alert("Quotation save error: " + (err.response?.data?.detail || JSON.stringify(err.response?.data) || err.message));
     }
   };
 
@@ -337,11 +343,11 @@ export default function Quotations() {
                   >
                     <option value="">Select Sales Person / Admin</option>
                     {salesTeam.map((person) => {
-                      const uname =
-                        person.username || person.name || person.first_name || person.email;
+                      const pId = person.id;
+                      const pName = person.first_name ? `${person.first_name} ${person.last_name || ""}`.trim() : (person.username || person.email);
                       return (
-                        <option key={person.id || uname} value={uname}>
-                          {uname}
+                        <option key={pId} value={pId}>
+                          {pName} ({person.email || person.username})
                         </option>
                       );
                     })}

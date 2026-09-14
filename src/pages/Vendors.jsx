@@ -26,7 +26,8 @@ export default function Vendors() {
     if (search.trim()) params.search = search.trim();
 
     try {
-      const res = await client.get("/vendors/", { params });
+      // FIX: Added /api/ prefix
+      const res = await client.get("/api/vendors/", { params });
       let vendorList = [];
       if (Array.isArray(res.data)) {
         vendorList = res.data;
@@ -47,7 +48,8 @@ export default function Vendors() {
   const loadSalesUsers = useCallback(async () => {
     if (!isAdmin) return;
     try {
-      const res = await client.get("/users/?role=SALES");
+      // FIX: Added /api/ prefix
+      const res = await client.get("/api/users/?role=SALES");
       let users = Array.isArray(res.data) ? res.data : (res.data.results || []);
       setSalesUsers(users);
     } catch (err) {
@@ -72,7 +74,8 @@ export default function Vendors() {
       e.stopPropagation();
     }
     try {
-      await client.post(`/vendors/${id}/${action}/`);
+      // FIX: Added /api/ prefix
+      await client.post(`/api/vendors/${id}/${action}/`);
       loadVendors();
     } catch (err) {
       console.error(`Failed to execute ${action}`, err);
@@ -83,7 +86,8 @@ export default function Vendors() {
     if (e) e.preventDefault();
     if (!selectedVendorForAssign) return;
     try {
-      await client.patch(`/vendors/${selectedVendorForAssign.id}/`, {
+      // FIX: Added /api/ prefix
+      await client.patch(`/api/vendors/${selectedVendorForAssign.id}/`, {
         assigned_salesperson: assignedSalesId ? parseInt(assignedSalesId) : null,
       });
       setSelectedVendorForAssign(null);

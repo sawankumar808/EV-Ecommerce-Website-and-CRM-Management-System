@@ -23,7 +23,8 @@ export default function Coupons() {
 
   const fetchCoupons = () => {
     client
-      .get("/coupons/")
+      .get("/api/coupons/")
+      .catch(() => client.get("/coupons/"))
       .then((r) => setCoupons(r.data.results || r.data))
       .catch((err) => console.error("Error fetching coupons:", err));
   };
@@ -36,19 +37,18 @@ export default function Coupons() {
     e.preventDefault();
     setLoading(true);
     try {
-      // Backend Django Model ke exact fields ke according payload:
       const payload = {
         code: couponForm.code.trim().toUpperCase(),
         discount_type: couponForm.discount_type,
         discount_value: parseFloat(couponForm.discount_value),
         minimum_purchase: parseFloat(couponForm.minimum_purchase || 0),
         usage_limit: parseInt(couponForm.usage_limit, 10) || 1,
-        start_date: couponForm.start_date, // Pure 'YYYY-MM-DD' string
-        expiry_date: couponForm.expiry_date, // Pure 'YYYY-MM-DD' string
+        start_date: couponForm.start_date,
+        expiry_date: couponForm.expiry_date,
         status: "ACTIVE",
       };
 
-      await client.post("/coupons/", payload);
+      await client.post("/api/coupons/", payload).catch(() => client.post("/coupons/", payload));
       alert("Coupon created successfully!");
       setShowCreateModal(false);
       setCouponForm({
@@ -165,7 +165,7 @@ export default function Coupons() {
                     Discount Type
                   </label>
                   <select
-                    className="w-full px-3 py-2 border rounded-lg"
+                    className="w-full px-3 py-2 border rounded-lg bg-white"
                     value={couponForm.discount_type}
                     onChange={(e) =>
                       setCouponForm({

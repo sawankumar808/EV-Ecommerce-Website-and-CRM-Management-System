@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Phone, IndianRupee, Plus, UserCheck, Trash2, X } from "lucide-react";
+import { Phone, IndianRupee, Plus, UserCheck, Trash2, Edit, X } from "lucide-react";
 import client from "../api/client";
 import { PageHeader, Button } from "../components/ui";
 
@@ -9,8 +9,10 @@ export default function Leads() {
   const [salesTeam, setSalesTeam] = useState([]);
   const [dragId, setDragId] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingLeadId, setEditingLeadId] = useState(null);
 
   const [currentUser, setCurrentUser] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -25,6 +27,7 @@ export default function Leads() {
 
   const syncUserContext = () => {
     let username = "";
+    let userId = "";
     let role = "SALES";
     let isSuper = false;
 
@@ -50,6 +53,7 @@ export default function Leads() {
               parsed.first_name ||
               parsed.email ||
               username;
+            userId = parsed.id || userId;
             if (parsed.role) role = parsed.role;
             if (parsed.is_superuser || parsed.is_staff) isSuper = true;
           } catch (e) {}
@@ -58,6 +62,9 @@ export default function Leads() {
         }
       }
     }
+
+    const storedId = localStorage.getItem("user_id") || localStorage.getItem("id");
+    if (storedId) userId = storedId;
 
     const storedRole = (
       localStorage.getItem("role") ||
@@ -78,13 +85,14 @@ export default function Leads() {
     }
 
     setCurrentUser(username);
+    setCurrentUserId(userId);
     setIsAdmin(adminCheck);
 
-    return { username, adminCheck };
+    return { username, userId, adminCheck };
   };
 
   const fetchUsers = async () => {
-    const endpoints = ["/sales-team/", "/users/", "/crm/users/"];
+    const endpoints = ["/api/sales-team/", "/api/users/", "/api/crm/users/", "/sales-team/", "/users/"];
 
     let rawUsers = [];
 
@@ -101,32 +109,19 @@ export default function Leads() {
       }
     }
 
-    // Dynamic Filter: Includes Admin + All current & future Sales accounts
     const salesOnly = rawUsers.filter((u) => {
-      const uname = (u.username || u.name || u.first_name || "").toLowerCase();
-      const email = (u.email || "").toLowerCase();
       const role = (u.role || u.user_role || u.type || "").toString().toLowerCase();
-
-      // Exclude Vendors or internal non-crm system accounts
       if (role.includes("vendor") || role.includes("supplier")) {
         return false;
       }
-
-      // Exclude old buggy test accounts
-      if (uname === "arun" || uname === "shubham") {
-        return false;
-      }
-
-      // Allow Admin + Active Sales Staff (sawankumar, raju, admin, future sales users)
       return true;
     });
 
-    // Remove duplicates by Unique Username / Email
     const uniqueUsers = [];
     const seenKeys = new Set();
 
     salesOnly.forEach((u) => {
-      const identifier = (u.username || u.email || "").toLowerCase();
+      const identifier = (u.id || u.username || u.email || "").toString().toLowerCase();
       if (identifier && !seenKeys.has(identifier)) {
         seenKeys.add(identifier);
         uniqueUsers.push(u);
@@ -138,10 +133,10 @@ export default function Leads() {
 
   async function load() {
     try {
-      syncUserContext();
+      const userCtx = syncUserContext();
       const [stagesRes, leadsRes] = await Promise.all([
-        client.get("/pipeline-stages/").catch(() => client.get("/crm/pipeline-stages/")),
-        client.get("/leads/").catch(() => client.get("/crm/leads/")),
+        client.get("/api/pipeline-stages/").catch(() => client.get("/pipeline-stages/")),
+        client.get("/api/leads/").catch(() => client.get("/leads/")),
       ]);
 
       const loadedStages = stagesRes.data.results || stagesRes.data || [];
@@ -152,6 +147,10 @@ export default function Leads() {
 
       const team = await fetchUsers();
       setSalesTeam(team);
+
+      if (!userCtx.adminCheck && userCtx.userId) {
+        setFormData((prev) => ({ ...prev, sales_person: userCtx.userId }));
+      }
     } catch (err) {
       console.error("Pipeline load error:", err);
     }
@@ -161,17 +160,31 @@ export default function Leads() {
     load();
   }, []);
 
-  const handleOpenModal = () => {
-    syncUserContext();
-    setFormData({
-      name: "",
-      company: "",
-      mobile: "",
-      sales_person: "",
-      expected_deal_value: "",
-      priority: "MEDIUM",
-      stage: stages[0]?.id || "",
-    });
+  const handleOpenModal = (lead = null) => {
+    const userCtx = syncUserContext();
+    if (lead) {
+      setEditingLeadId(lead.id);
+      setFormData({
+        name: lead.name || "",
+        company: lead.company || "",
+        mobile: lead.mobile || "",
+        sales_person: lead.sales_person || "",
+        expected_deal_value: lead.expected_deal_value || "",
+        priority: lead.priority || "MEDIUM",
+        stage: lead.stage || stages[0]?.id || "",
+      });
+    } else {
+      setEditingLeadId(null);
+      setFormData({
+        name: "",
+        company: "",
+        mobile: "",
+        sales_person: !userCtx.adminCheck && userCtx.userId ? userCtx.userId : "",
+        expected_deal_value: "",
+        priority: "MEDIUM",
+        stage: stages[0]?.id || "",
+      });
+    }
     setShowModal(true);
   };
 
@@ -181,31 +194,43 @@ export default function Leads() {
     );
     try {
       await client
-        .post(`/leads/${leadId}/change_stage/`, { stage_id: stageId })
-        .catch(() => client.post(`/crm/leads/${leadId}/change_stage/`, { stage_id: stageId }));
+        .post(`/api/leads/${leadId}/change_stage/`, { stage_id: stageId })
+        .catch(() => client.post(`/leads/${leadId}/change_stage/`, { stage_id: stageId }));
     } catch (err) {
       console.error("Stage update error:", err);
     }
   }
 
   const handleDeleteLead = async (leadId) => {
-    if (!window.confirm("Is lead ko pipeline se delete karna chahte hain?")) return;
+    if (!window.confirm("Are you sure you want to delete this lead from the pipeline?")) return;
     try {
-      await client.delete(`/leads/${leadId}/`).catch(() => client.delete(`/crm/leads/${leadId}/`));
+      await client.delete(`/api/leads/${leadId}/`).catch(() => client.delete(`/leads/${leadId}/`));
       setLeads((prev) => prev.filter((l) => l.id !== leadId));
     } catch (err) {
-      alert("Lead delete nahi ho saki.");
+      alert("Failed to delete lead.");
     }
   };
 
-  const handleCreateLead = async (e) => {
+  const handleSaveLead = async (e) => {
     e.preventDefault();
     try {
-      await client.post("/leads/", formData).catch(() => client.post("/crm/leads/", formData));
+      const payload = { ...formData };
+      if (payload.sales_person) {
+        payload.sales_person = parseInt(payload.sales_person, 10);
+      }
+
+      if (editingLeadId) {
+        // Update existing lead
+        await client.put(`/api/leads/${editingLeadId}/`, payload).catch(() => client.put(`/leads/${editingLeadId}/`, payload));
+      } else {
+        // Create new lead
+        await client.post("/api/leads/", payload).catch(() => client.post("/leads/", payload));
+      }
+
       setShowModal(false);
       load();
     } catch (err) {
-      alert("Error creating lead: " + (err.response?.data?.detail || err.message));
+      alert("Error saving lead: " + (err.response?.data?.detail || JSON.stringify(err.response?.data) || err.message));
     }
   };
 
@@ -221,7 +246,7 @@ export default function Leads() {
         title="Sales Pipeline"
         subtitle="Manage and track active sales deals."
         action={
-          <Button variant="primary" onClick={handleOpenModal}>
+          <Button variant="primary" onClick={() => handleOpenModal()}>
             <Plus size={15} /> New Lead
           </Button>
         }
@@ -260,14 +285,24 @@ export default function Leads() {
                       priorityColor[lead.priority] || "border-l-gray-300"
                     } cursor-grab active:cursor-grabbing border border-black/5 hover:shadow-md transition-shadow relative group`}
                   >
-                    <button
-                      onClick={() => handleDeleteLead(lead.id)}
-                      className="absolute top-2 right-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleOpenModal(lead)}
+                        className="text-gray-400 hover:text-blue-600 p-1"
+                        title="Edit Lead"
+                      >
+                        <Edit size={13} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteLead(lead.id)}
+                        className="text-gray-400 hover:text-red-500 p-1"
+                        title="Delete Lead"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
 
-                    <p className="text-sm font-medium text-ink pr-5">{lead.name}</p>
+                    <p className="text-sm font-medium text-ink pr-10">{lead.name}</p>
                     <p className="text-xs text-muted">{lead.company || "No Company"}</p>
 
                     <div className="flex items-center gap-1 text-[11px] text-muted pt-1">
@@ -296,18 +331,20 @@ export default function Leads() {
         )}
       </div>
 
-      {/* CREATE LEAD MODAL */}
+      {/* CREATE / EDIT LEAD MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="text-lg font-semibold text-ink">Add New Lead</h3>
+              <h3 className="text-lg font-semibold text-ink">
+                {editingLeadId ? "Edit Lead" : "Add New Lead"}
+              </h3>
               <button onClick={() => setShowModal(false)} className="text-muted hover:text-ink">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateLead} className="space-y-3">
+            <form onSubmit={handleSaveLead} className="space-y-3">
               <div>
                 <label className="text-xs text-muted block mb-1">Lead Name *</label>
                 <input
@@ -331,7 +368,6 @@ export default function Leads() {
                 />
               </div>
 
-              {/* SALES PERSON + ADMIN DROPDOWN */}
               <div>
                 <label className="text-xs text-muted block mb-1">Assigned Sales Person *</label>
                 {isAdmin ? (
@@ -343,11 +379,11 @@ export default function Leads() {
                   >
                     <option value="">Select Sales Person / Admin</option>
                     {salesTeam.map((person) => {
-                      const uname =
-                        person.username || person.name || person.first_name || person.email;
+                      const pId = person.id;
+                      const pName = person.first_name ? `${person.first_name} ${person.last_name || ""}`.trim() : (person.username || person.email);
                       return (
-                        <option key={person.id || uname} value={uname}>
-                          {uname}
+                        <option key={pId} value={pId}>
+                          {pName} ({person.email || person.username})
                         </option>
                       );
                     })}
@@ -426,7 +462,7 @@ export default function Leads() {
                 >
                   Cancel
                 </button>
-                <Button type="submit">Create Lead</Button>
+                <Button type="submit">{editingLeadId ? "Update Lead" : "Create Lead"}</Button>
               </div>
             </form>
           </div>

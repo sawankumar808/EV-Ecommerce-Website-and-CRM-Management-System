@@ -6,7 +6,7 @@ import VendorRegister from "./pages/VendorRegister";
 import VendorDashboard from "./pages/VendorDashboard";
 import Dashboard from "./pages/Dashboard";
 import Vendors from "./pages/Vendors";
-import VendorDetail from "./pages/VendorDetail"; // <--- NAYA IMPORT HERE
+import VendorDetail from "./pages/VendorDetail";
 import Leads from "./pages/Leads";
 import SalesTeam from "./pages/SalesTeam";
 import Customers from "./pages/Customers";
@@ -17,6 +17,7 @@ import Batteries from "./pages/Batteries";
 import Scooters from "./pages/Scooters";
 import Quotations from "./pages/Quotations";
 import Reports from "./pages/Reports";
+import SiteSettings from "./pages/SiteSettings"; // 👈 1. Import SiteSettings component
 import BatteriesPublic from "./pages/BatteriesPublic";
 import Sales from "./pages/Sales";
 
@@ -39,7 +40,7 @@ function PrivateRoute({ children, roles }) {
 function AppRoutes() {
   return (
     <Routes>
-      {/* Public e-commerce website */}
+      {/* 1. Public E-commerce Website */}
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/about" element={<About />} />
@@ -51,11 +52,11 @@ function AppRoutes() {
         <Route path="/privacy" element={<Privacy />} />
       </Route>
 
-      {/* Unified Login & Registration */}
+      {/* 2. Authentication & Registration */}
       <Route path="/login" element={<Login />} />
       <Route path="/vendor/register" element={<VendorRegister />} />
 
-      {/* Vendor Portal */}
+      {/* 3. Vendor Portal */}
       <Route
         path="/vendor-dashboard"
         element={
@@ -65,7 +66,7 @@ function AppRoutes() {
         }
       />
 
-      {/* CRM Admin / Sales Team Panel */}
+      {/* 4. CRM Admin & Sales Panel */}
       <Route
         path="/crm"
         element={
@@ -75,11 +76,14 @@ function AppRoutes() {
         }
       >
         <Route index element={<Dashboard />} />
-        
-        {/* VENDOR ROUTES UPDATED */}
         <Route path="vendors" element={<Vendors />} />
+        
         <Route path="vendors/:id" element={<VendorDetail />} />
         <Route path="vendors/:id/edit" element={<VendorDetail />} />
+        <Route path="vendors/:id/documents" element={<VendorDetail />} />
+        <Route path="vendors/:id/sales" element={<VendorDetail />} />
+        <Route path="vendors/:id/batteries" element={<VendorDetail />} />
+        <Route path="vendors/:id/customers" element={<VendorDetail />} />
         <Route path="vendors/:id/history" element={<VendorDetail />} />
 
         <Route path="sales" element={<Sales />} />
@@ -93,8 +97,10 @@ function AppRoutes() {
         <Route path="scooters" element={<Scooters />} />
         <Route path="quotations" element={<Quotations />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="settings" element={<SiteSettings />} /> {/* 👈 2. Added SiteSettings route */}
       </Route>
 
+      {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

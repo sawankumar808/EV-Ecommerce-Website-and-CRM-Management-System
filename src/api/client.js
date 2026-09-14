@@ -5,7 +5,6 @@ const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 const client = axios.create({ baseURL: BASE_URL });
 
 client.interceptors.request.use((config) => {
-  // Check for 'access_token', 'token', or 'access'
   const token = 
     localStorage.getItem("access_token") || 
     localStorage.getItem("token") || 
@@ -20,7 +19,11 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (res) => res,
   async (error) => {
-    if (error.response && error.response.status === 401 && window.location.pathname !== "/login") {
+    // Agar user public pages par hai (jaise /, /products, /about, /contact), toh 401 aane par login par mat bhejo
+    const publicPaths = ["/", "/about", "/products", "/contact", "/login", "/vendor/register"];
+    const isPublicPage = publicPaths.includes(window.location.pathname) || window.location.pathname.startsWith("/products/");
+
+    if (error.response && error.response.status === 401 && !isPublicPage) {
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("token");

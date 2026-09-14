@@ -1,356 +1,313 @@
 import { useEffect, useState } from "react";
 import client from "../api/client";
-import {
-  Card,
-  PageHeader,
-  StatusBadge,
-  Button,
-  Input,
-  Select,
-  Modal,
-  FormGrid,
-  Field,
-} from "../components/ui";
-import { useAuth } from "../context/AuthContext";
+import { Card } from "../components/ui";
+import { Package, Eye, Edit, Trash2, Plus, X } from "lucide-react";
 
 export default function Products() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
-
-  const [items, setItems] = useState([]);
-  const [vendors, setVendors] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [priceOpen, setPriceOpen] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  const blankProduct = {
+  const [products, setProducts] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  
+  const [form, setForm] = useState({
     name: "",
-    model_number: "",
     sku: "",
-    category: "Scooter",
+    model_number: "",
+    category: "SCOOTER",
     description: "",
-    base_price: "",
-    tax_percent: 0,
-    status: "ACTIVE",
-    availability: true,
-    specifications: "{}",
+    specifications: "",
     features: "",
+    public_price: "",
+    vendor_price: "",
+    availability: true,
+    status: "ACTIVE",
     image: null,
-  };
+  });
 
-  const blankPrice = {
-    vendor: "",
-    product: "",
-    price: "",
-  };
-
-  const [form, setForm] = useState(blankProduct);
-  const [price, setPrice] = useState(blankPrice);
-
-  const load = () => {
-    client
-      .get("/products/")
-      .then((r) => setItems(r.data.results || r.data))
-      .catch((err) => console.error("Failed to load products:", err));
+  const fetchProducts = () => {
+    client.get("/api/products/")
+      .then((res) => {
+        const data = res.data.results || res.data;
+        setProducts(data);
+      })
+      .catch((err) => console.error("Error loading products:", err));
   };
 
   useEffect(() => {
-    load();
-    if (isAdmin) {
-      client
-        .get("/vendors/")
-        .then((r) => setVendors(r.data.results || r.data))
-        .catch((err) => console.error("Failed to load vendors:", err));
-    }
-  }, [isAdmin]);
+    fetchProducts();
+  }, []);
 
-  const handleOpenAddModal = () => {
-    setMsg("");
-    setForm(blankProduct);
-    setOpen(true);
-  };
-
-  const handleOpenPriceModal = () => {
-    setMsg("");
-    setPrice(blankPrice);
-    setPriceOpen(true);
-  };
-
-  const save = async (e) => {
-    e.preventDefault();
-    setMsg("");
-    try {
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => {
-        if (k === "specifications") {
-          try {
-            fd.append(k, JSON.stringify(JSON.parse(v || "{}")));
-          } catch {
-            fd.append(k, "{}");
-          }
-        } else if (v !== null && v !== undefined) {
-          fd.append(k, v);
-        }
-      });
-
-      await client.post("/products/", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      setOpen(false);
-      setForm(blankProduct);
-      load();
-    } catch (e) {
-      setMsg(
-        typeof e.response?.data === "object"
-          ? JSON.stringify(e.response.data)
-          : e.response?.data || e.message
-      );
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this product?")) {
+      try {
+        await client.delete(`/api/products/${id}/`);
+        fetchProducts();
+      } catch (err) {
+        alert("Failed to delete product.");
+      }
     }
   };
 
-  const savePrice = async (e) => {
+  const getImageUrl = (img) => {
+    if (!img) return null;
+    if (typeof img === "object") return URL.createObjectURL(img);
+    if (/^https?:\/\//i.test(img)) return img;
+
+    const cleanImg = img.startsWith("/") ? img : `/${img}`;
+    const finalPath = cleanImg.startsWith("/media/") ? cleanImg : `/media${cleanImg}`;
+    
+    return `http://localhost:8000${finalPath}`;
+  };
+
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    setMsg("");
+    
+    const formData = new FormData();
+    formData.append("name", form.name);
+    formData.append("sku", form.sku || `SKU-${Date.now()}`);
+    formData.append("model_number", form.model_number || "");
+    formData.append("category", form.category);
+    formData.append("description", form.description || "");
+    formData.append("specifications", form.specifications || "");
+    formData.append("features", form.features || "");
+    formData.append("public_price", form.public_price || 0);
+    formData.append("vendor_price", form.vendor_price || 0);
+    formData.append("availability", form.availability);
+    formData.append("status", form.status);
+    
+    if (form.image instanceof File) {
+      formData.append("image", form.image);
+    }
+
     try {
-      await client.post("/vendor-product-prices/", price);
-      setPriceOpen(false);
-      setPrice(blankPrice);
-      setMsg("Vendor price saved successfully!");
-    } catch (e) {
-      setMsg(
-        typeof e.response?.data === "object"
-          ? JSON.stringify(e.response.data)
-          : e.response?.data || e.message
-      );
+      if (form.id) {
+        await client.put(`/api/products/${form.id}/`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      } else {
+        await client.post(`/api/products/`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+      setIsEditing(false);
+      fetchProducts();
+    } catch (err) {
+      console.error("Save product error details:", err.response?.data);
+      alert("Failed to save product: " + JSON.stringify(err.response?.data || err.message));
     }
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Products"
-        subtitle="Admin catalog and vendor-specific pricing."
-        action={
-          isAdmin && (
-            <div className="flex gap-2">
-              <Button onClick={handleOpenPriceModal} variant="outline">
-                Set Vendor Price
-              </Button>
-              <Button onClick={handleOpenAddModal}>+ Add Product</Button>
-            </div>
-          )
-        }
-      />
+    <div className="p-6 max-w-7xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-ink">Manage Products</h1>
+          <p className="text-sm text-muted">Admin catalog, inventory, and dual-pricing dashboard.</p>
+        </div>
+        <button
+          onClick={() => {
+            setSelectedProduct(null);
+            setIsEditing(true);
+            setForm({
+              name: "",
+              sku: "",
+              model_number: "",
+              category: "SCOOTER",
+              description: "",
+              specifications: "",
+              features: "",
+              public_price: "",
+              vendor_price: "",
+              availability: true,
+              status: "ACTIVE",
+              image: null,
+            });
+          }}
+          className="flex items-center gap-2 bg-ink text-volt px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90"
+        >
+          <Plus size={16} /> Add Product
+        </button>
+      </div>
 
-      {msg && (
-        <div className="p-3 bg-coral/10 border border-coral/20 rounded-lg text-coral text-sm">
-          {msg}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {products.map((p) => {
+          const imgUrl = getImageUrl(p.image);
+          return (
+            <Card key={p.id} className="p-0 overflow-hidden bg-white border border-black/[0.06] flex flex-col justify-between">
+              <div>
+                {/* Image Container with object-contain to prevent cutting */}
+                <div className="h-56 bg-surface relative flex items-center justify-center overflow-hidden">
+                  {imgUrl ? (
+                    <img 
+                      src={imgUrl} 
+                      alt={p.name} 
+                      className="absolute inset-0 w-full h-full object-contain p-2" 
+                      onError={(e) => { 
+                        e.currentTarget.style.display = "none"; 
+                      }} 
+                    />
+                  ) : (
+                    <Package size={48} className="text-emerald/40" />
+                  )}
+                  <span className="absolute top-3 right-3 z-10 bg-ink text-white text-[10px] px-2 py-0.5 rounded-full uppercase shadow">
+                    {p.category}
+                  </span>
+                </div>
+                <div className="p-4">
+                  <p className="text-xs text-muted font-medium">SKU: {p.sku || "N/A"}</p>
+                  <h3 className="font-display text-lg font-semibold text-ink mt-0.5">{p.name}</h3>
+                  
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs bg-surface p-2.5 rounded-xl border border-black/5">
+                    <div>
+                      <span className="text-muted block text-[10px] uppercase">Visitor Price</span>
+                      <span className="font-bold text-ink text-sm">₹{Number(p.public_price || 0).toLocaleString("en-IN")}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted block text-[10px] uppercase">Vendor Price</span>
+                      <span className="font-bold text-emerald-dark text-sm">₹{Number(p.vendor_price || 0).toLocaleString("en-IN")}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-black/5 p-3 grid grid-cols-3 gap-2 bg-surface/50">
+                <button onClick={() => setSelectedProduct(p)} className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-white rounded border hover:bg-surface">
+                  <Eye size={13} /> View
+                </button>
+                <button onClick={() => { setSelectedProduct(null); setForm(p); setIsEditing(true); }} className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-white rounded border hover:bg-surface">
+                  <Edit size={13} /> Edit
+                </button>
+                <button onClick={() => handleDelete(p.id)} className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-coral/10 text-coral rounded hover:bg-coral/20">
+                  <Trash2 size={13} /> Delete
+                </button>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {isEditing && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 relative shadow-2xl">
+            <button onClick={() => setIsEditing(false)} className="absolute top-4 right-4 text-muted hover:text-ink">
+              <X size={20} />
+            </button>
+            
+            <h2 className="text-xl font-semibold font-display mb-4">
+              {form.id ? "Edit Product" : "Add New Product"}
+            </h2>
+
+            <form onSubmit={handleFormSubmit} className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">Product Name</label>
+                  <input required className="w-full border rounded-lg p-2.5" placeholder="e.g. Voltra S1 Pro" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">SKU Code *</label>
+                  <input required className="w-full border rounded-lg p-2.5" placeholder="e.g. VOLTRA-S1-001" value={form.sku} onChange={(e) => setForm({...form, sku: e.target.value})} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">Model Number / Batch</label>
+                  <input className="w-full border rounded-lg p-2.5" placeholder="e.g. S1-PRO-2026" value={form.model_number || ""} onChange={(e) => setForm({...form, model_number: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">Category</label>
+                  <select className="w-full border rounded-lg p-2.5" value={form.category} onChange={(e) => setForm({...form, category: e.target.value})}>
+                    <option value="SCOOTER">Scooter</option>
+                    <option value="BATTERY">Battery</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-surface p-3 rounded-xl border border-black/5">
+                <div>
+                  <label className="block text-xs font-semibold text-ink mb-1">Public Visitor Price (₹)</label>
+                  <input type="number" step="0.01" required className="w-full border rounded-lg p-2.5 bg-white" placeholder="0.00" value={form.public_price} onChange={(e) => setForm({...form, public_price: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-emerald-dark mb-1">Registered Vendor Price (₹)</label>
+                  <input type="number" step="0.01" required className="w-full border rounded-lg p-2.5 bg-white" placeholder="0.00" value={form.vendor_price} onChange={(e) => setForm({...form, vendor_price: e.target.value})} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Product Image</label>
+                <div className="flex items-center gap-3 border rounded-lg p-2 bg-surface">
+                  <input type="file" accept="image/*" onChange={(e) => setForm({...form, image: e.target.files[0]})} className="text-xs text-muted file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-ink file:text-volt hover:file:opacity-90" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Description</label>
+                <textarea className="w-full border rounded-lg p-2.5" rows={4} placeholder="Detailed product description..." value={form.description || ""} onChange={(e) => setForm({...form, description: e.target.value})} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Features (one per line)</label>
+                <textarea className="w-full border rounded-lg p-2.5" rows={2} placeholder="Fast charging&#10;120km range" value={form.features || ""} onChange={(e) => setForm({...form, features: e.target.value})} />
+              </div>
+
+              <button type="submit" className="w-full bg-ink text-volt py-3 rounded-xl font-medium mt-2 hover:opacity-90 transition-opacity">
+                Save Product
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Products Grid */}
-      <div className="grid md:grid-cols-3 gap-4">
-        {items.map((p) => (
-          <Card key={p.id} className="p-5 flex flex-col justify-between">
-            <div>
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-display font-semibold text-ink">{p.name}</p>
-                <StatusBadge status={p.status} />
-              </div>
-
-              <p className="text-xs text-muted font-mono mt-1">
-                {p.sku || "N/A"} · {p.model_number || "N/A"}
-              </p>
-
-              <p className="text-sm text-muted my-3 line-clamp-2">
-                {p.description || "No description provided."}
-              </p>
+      {selectedProduct && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 relative shadow-2xl">
+            <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 text-muted hover:text-ink">
+              <X size={20} />
+            </button>
+            
+            <h2 className="text-xl font-semibold font-display mb-3">{selectedProduct.name}</h2>
+            
+            {/* Modal Image Container with object-contain */}
+            <div className="h-64 bg-surface rounded-xl overflow-hidden flex items-center justify-center mb-4 relative">
+              {selectedProduct.image ? (
+                <img src={getImageUrl(selectedProduct.image)} alt={selectedProduct.name} className="absolute inset-0 w-full h-full object-contain p-2" />
+              ) : (
+                <Package size={56} className="text-emerald/30" />
+              )}
             </div>
 
-            <p className="font-display text-lg font-semibold text-emerald-dark pt-2 border-t border-black/5">
-              ₹{Number(p.base_price || 0).toLocaleString("en-IN")}
-            </p>
-          </Card>
-        ))}
-
-        {items.length === 0 && (
-          <div className="col-span-full text-center py-12 text-muted border border-dashed rounded-xl">
-            No products available in the catalog.
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between bg-surface p-2.5 rounded-lg">
+                <span className="text-muted">SKU Code:</span>
+                <span className="font-medium">{selectedProduct.sku || "N/A"}</span>
+              </div>
+              <div className="flex justify-between bg-surface p-2.5 rounded-lg">
+                <span className="text-muted">Model Number:</span>
+                <span className="font-medium">{selectedProduct.model_number || "N/A"}</span>
+              </div>
+              <div className="flex justify-between bg-surface p-2.5 rounded-lg">
+                <span className="text-muted">Category:</span>
+                <span className="font-medium">{selectedProduct.category}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-surface p-3 rounded-lg">
+                  <span className="text-xs text-muted block">Visitor Price</span>
+                  <span className="font-bold text-lg text-ink">₹{Number(selectedProduct.public_price || 0).toLocaleString("en-IN")}</span>
+                </div>
+                <div className="bg-emerald/5 p-3 rounded-lg border border-emerald/10">
+                  <span className="text-xs text-muted block">Vendor Price</span>
+                  <span className="font-bold text-lg text-emerald-dark">₹{Number(selectedProduct.vendor_price || 0).toLocaleString("en-IN")}</span>
+                </div>
+              </div>
+              <div>
+                <span className="text-xs text-muted block mb-1">Description</span>
+                <p className="text-muted bg-surface p-3 rounded-lg">{selectedProduct.description || "No description provided."}</p>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Add Product Modal */}
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Product">
-        <form onSubmit={save} className="space-y-4">
-          <FormGrid>
-            <Field label="Name">
-              <Input
-                required
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Product Name"
-              />
-            </Field>
-
-            <Field label="SKU">
-              <Input
-                required
-                value={form.sku}
-                onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                placeholder="e.g. SCT-001"
-              />
-            </Field>
-
-            <Field label="Model">
-              <Input
-                value={form.model_number}
-                onChange={(e) =>
-                  setForm({ ...form, model_number: e.target.value })
-                }
-                placeholder="Model Number"
-              />
-            </Field>
-
-            <Field label="Category">
-              <Input
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder="e.g. Scooter"
-              />
-            </Field>
-
-            <Field label="Base Price">
-              <Input
-                required
-                type="number"
-                value={form.base_price}
-                onChange={(e) =>
-                  setForm({ ...form, base_price: e.target.value })
-                }
-                placeholder="0.00"
-              />
-            </Field>
-
-            <Field label="Tax %">
-              <Input
-                type="number"
-                value={form.tax_percent}
-                onChange={(e) =>
-                  setForm({ ...form, tax_percent: e.target.value })
-                }
-                placeholder="18"
-              />
-            </Field>
-          </FormGrid>
-
-          <Field label="Description">
-            <textarea
-              className="w-full border border-black/10 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald/40"
-              rows="3"
-              value={form.description}
-              onChange={(e) =>
-                setForm({ ...form, description: e.target.value })
-              }
-              placeholder="Write product description..."
-            />
-          </Field>
-
-          <Field label="Product Image">
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(e) =>
-                setForm({ ...form, image: e.target.files[0] || null })
-              }
-            />
-          </Field>
-
-          <Field label="Specifications (JSON)">
-            <textarea
-              className="w-full border border-black/10 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald/40"
-              rows="3"
-              value={form.specifications}
-              onChange={(e) =>
-                setForm({ ...form, specifications: e.target.value })
-              }
-              placeholder='{"range": "80km", "battery": "72V"}'
-            />
-          </Field>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">Create Product</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Set Vendor-Specific Price Modal */}
-      <Modal
-        open={priceOpen}
-        onClose={() => setPriceOpen(false)}
-        title="Set Vendor-Specific Price"
-      >
-        <form onSubmit={savePrice} className="space-y-4">
-          <Field label="Vendor">
-            <Select
-              required
-              value={price.vendor}
-              onChange={(e) => setPrice({ ...price, vendor: e.target.value })}
-            >
-              <option value="">Select vendor</option>
-              {vendors.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.business_name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field label="Product">
-            <Select
-              required
-              value={price.product}
-              onChange={(e) => setPrice({ ...price, product: e.target.value })}
-            >
-              <option value="">Select product</option>
-              {items.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.sku})
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field label="Price">
-            <Input
-              required
-              type="number"
-              value={price.price}
-              onChange={(e) => setPrice({ ...price, price: e.target.value })}
-              placeholder="Custom Vendor Price"
-            />
-          </Field>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPriceOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">Save Price</Button>
-          </div>
-        </form>
-      </Modal>
+        </div>
+      )}
     </div>
   );
 }

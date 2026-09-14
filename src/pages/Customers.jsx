@@ -36,7 +36,7 @@ export default function Customers() {
 
   const load = () => {
     client
-      .get("/customers/")
+      .get("/api/customers/")
       .then((r) => setItems(r.data.results || r.data))
       .catch((e) => console.error("Failed to load customers:", e));
   };
@@ -44,8 +44,15 @@ export default function Customers() {
   useEffect(() => {
     load();
     client
-      .get("/vendors/")
-      .then((r) => setVendors(r.data.results || r.data))
+      .get("/api/vendors/")
+      .then((r) => {
+        const allVendors = r.data.results || r.data;
+        // FIX: Sirf APPROVED vendors ko filter karna
+        const approvedVendors = allVendors.filter(
+          (v) => v.status?.toUpperCase() === "APPROVED"
+        );
+        setVendors(approvedVendors);
+      })
       .catch(() => {});
   }, []);
 
@@ -59,7 +66,7 @@ export default function Customers() {
     e.preventDefault();
     setErr("");
     try {
-      await client.post("/customers/", {
+      await client.post("/api/customers/", {
         ...form,
         vendor: form.vendor || null,
       });
@@ -93,7 +100,7 @@ export default function Customers() {
         <table className="w-full text-sm">
           <thead className="bg-surface text-muted text-xs uppercase tracking-wide">
             <tr>
-              {["Name", "Mobile", "City", "Category", "Vendor"].map((x) => (
+              {["Name", "Mobile", "City", "Category", "Vendor", "Actions"].map((x) => (
                 <th key={x} className="text-left px-5 py-3 font-medium">
                   {x}
                 </th>
@@ -115,11 +122,19 @@ export default function Customers() {
                 <td className="px-5 py-3 text-muted">{c.city || "—"}</td>
                 <td className="px-5 py-3 text-muted">{c.category}</td>
                 <td className="px-5 py-3 text-muted">{c.vendor_name || "—"}</td>
+                <td className="px-5 py-3 text-right">
+                  <Link
+                    to={`/crm/customers/${c.id}`}
+                    className="text-xs bg-surface border border-black/10 px-3 py-1.5 rounded-md hover:bg-black/5 transition-colors font-medium text-ink inline-block"
+                  >
+                    View Details
+                  </Link>
+                </td>
               </tr>
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center py-8 text-muted">
+                <td colSpan={6} className="text-center py-8 text-muted">
                   No customer records found.
                 </td>
               </tr>
@@ -198,10 +213,10 @@ export default function Customers() {
                 value={form.vendor}
                 onChange={(e) => setForm({ ...form, vendor: e.target.value })}
               >
-                <option value="">None</option>
+                <option value="">None (Select Vendor)</option>
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.business_name}
+                    {v.business_name || v.name || `Vendor #${v.id}`} ({v.city || "N/A"})
                   </option>
                 ))}
               </Select>

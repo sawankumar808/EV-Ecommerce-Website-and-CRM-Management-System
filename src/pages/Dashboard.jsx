@@ -8,15 +8,25 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [followUps, setFollowUps] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [actualScooterCount, setActualScooterCount] = useState(null);
   const { user } = useAuth();
 
   useEffect(() => {
-    client.get("/dashboard-summary/").then((r) => setSummary(r.data)).catch(() => {});
-    client.get("/follow-ups/today/").then((r) => setFollowUps(r.data)).catch(() => {});
-    client.get("/vendors/?ordering=-registered_at").then((r) => setVendors(r.data.results || r.data)).catch(() => {});
+    client.get("/api/dashboard-summary/").then((r) => setSummary(r.data)).catch((e) => console.error("Summary error:", e));
+    client.get("/api/follow-ups/today/").then((r) => setFollowUps(r.data)).catch((e) => console.error("Followups error:", e));
+    client.get("/api/vendors/?ordering=-registered_at").then((r) => setVendors(r.data.results || r.data)).catch((e) => console.error("Vendors error:", e));
+    
+    // Fallback: Direct scooters list fetch karke count nikalna
+    client.get("/api/scooters/").then((r) => {
+      const list = r.data.results || r.data || [];
+      setActualScooterCount(list.length);
+    }).catch((e) => console.error("Scooters fetch error:", e));
   }, []);
 
   const s = summary || {};
+  
+  // Summary API ya direct scooters length mein se jo bhi available ho use karein
+  const totalScootersValue = s.total_scooters > 0 ? s.total_scooters : (actualScooterCount ?? 0);
 
   return (
     <div>
@@ -32,7 +42,7 @@ export default function Dashboard() {
         <KpiCard label="Total Customers" value={s.total_customers ?? "—"} icon={Users2} />
         <KpiCard label="Active Coupons" value={s.active_coupons ?? "—"} icon={Ticket} />
         <KpiCard label="Total Sales" value={`₹${Number(s.total_sales_amount||0).toLocaleString("en-IN")}`} icon={TrendingUp} />
-        <KpiCard label="Total Scooters" value={s.total_scooters ?? "—"} icon={Wallet} />
+        <KpiCard label="Total Scooters" value={totalScootersValue} icon={Wallet} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

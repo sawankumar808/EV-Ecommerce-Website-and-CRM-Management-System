@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Building2, Users2, Ticket, Package,
-  BatteryCharging, Bike, KanbanSquare, FileText, LogOut, Zap, UserCog,
+  BatteryCharging, Bike, KanbanSquare, FileText, LogOut, Zap, UserCog, BarChart3, Image,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -9,19 +9,20 @@ const nav = [
   { to: "/crm", label: "Dashboard", icon: LayoutDashboard, roles: ["ADMIN", "SALES"] },
   { to: "/crm/vendors", label: "Vendors", icon: Building2, roles: ["ADMIN", "SALES"] },
   { to: "/crm/leads", label: "Sales Pipeline", icon: KanbanSquare, roles: ["ADMIN", "SALES"] },
-  { to: "/crm/sales-team", label: "Sales Team", icon: UserCog, roles: ["ADMIN"] }, // Sirf Admin dekhega
+  { to: "/crm/sales-team", label: "Sales Team", icon: UserCog, roles: ["ADMIN"] },
   { to: "/crm/customers", label: "Customers", icon: Users2, roles: ["ADMIN", "SALES"] },
   { to: "/crm/coupons", label: "Coupons", icon: Ticket, roles: ["ADMIN", "SALES"] },
   { to: "/crm/products", label: "Products", icon: Package, roles: ["ADMIN", "SALES"] },
   { to: "/crm/batteries", label: "Batteries", icon: BatteryCharging, roles: ["ADMIN", "SALES"] },
   { to: "/crm/scooters", label: "Scooters", icon: Bike, roles: ["ADMIN", "SALES"] },
   { to: "/crm/quotations", label: "Quotations", icon: FileText, roles: ["ADMIN", "SALES"] },
+  { to: "/crm/reports", label: "Reports", icon: BarChart3, roles: ["ADMIN"] },
+  { to: "/crm/settings", label: "Site Banners", icon: Image, roles: ["ADMIN"] },
 ];
 
 export default function Sidebar() {
   const { logout, user } = useAuth();
 
-  // Role filtering logic
   const filteredNav = nav.filter(
     (item) => !item.roles || item.roles.includes(user?.role || "ADMIN")
   );

@@ -8,15 +8,14 @@ export default function Batteries() {
   const [tab, setTab] = useState("batteries");
   const [batteries, setBatteries] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [vendors, setVendors] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedQrBattery, setSelectedQrBattery] = useState(null);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Today's date YYYY-MM-DD
   const todayStr = new Date().toISOString().split("T")[0];
 
-  // Form State matched with Django BatteryBatch model
   const [batchForm, setBatchForm] = useState({
     batch_number: "",
     battery_model: "Lithium-Ion Standard",
@@ -24,43 +23,50 @@ export default function Batteries() {
     quantity: 10,
     manufacturing_date: todayStr,
     g_code: "G1",
-    guarantee_years: 1, // Custom Guarantee (e.g., 1G)
-    warranty_years: 1,  // Custom Warranty (e.g., 1W)
-    warranty_period_months: 24, // Total months
+    guarantee_years: 1,
+    warranty_years: 1,
+    warranty_period_months: 24,
     remarks: "",
   });
 
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
 
-  // Dynamic Serial Generator (Guarantee & Warranty years as inputs)
+  const allStatuses = [
+    "ADDED",
+    "IN_STOCK",
+    "ASSIGNED_VENDOR",
+    "SOLD",
+    "ASSIGNED_CUSTOMER",
+    "INSTALLED",
+    "IN_SERVICE",
+    "RETURNED",
+    "DAMAGED",
+    "REPLACED",
+    "INACTIVE",
+  ];
+
   const generateSerialNumber = (mfgDateStr, typeStr, guarantee = 1, warranty = 1, index = 2000) => {
-    // Month to Alphabet Mapping (Jan=A, Feb=B ... Sep=J ...)
     const monthLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M"];
-    
     const dateObj = mfgDateStr ? new Date(mfgDateStr) : new Date();
-    const monthIndex = dateObj.getMonth(); // 0 - 11
+    const monthIndex = dateObj.getMonth();
     const monthLetter = monthLetters[monthIndex] || "A";
 
-    // Format Volt & Ah: Extract digits from "60V 40Ah" -> "6040"
     const digitsOnly = typeStr.replace(/\D/g, ""); 
     const voltAhCode = digitsOnly || "6040";
 
-    // Format Year & Date: 2026-09-02 -> YY="26", DD="02"
     const fullYear = dateObj.getFullYear().toString();
     const yy = fullYear.slice(-2);
     const dd = String(dateObj.getDate()).padStart(2, "0");
     const yearDateCode = `${yy}${dd}`;
 
-    // Format: ROE + Month + Index + [guarantee]G[warranty]W + Volt/Ah + / + YYDD
-    // Example: ROEJ20001G1W6040/2602 or ROEJ20002G1W6040/2602
     return `ROE${monthLetter}${index}${guarantee}G${warranty}W${voltAhCode}/${yearDateCode}`;
   };
 
   async function loadBatteries() {
     try {
       const params = statusFilter ? { status: statusFilter } : {};
-      const res = await client.get("/batteries/", { params });
+      const res = await client.get("/api/batteries/", { params });
       setBatteries(res.data.results || res.data);
     } catch (err) {
       console.error("Failed to load batteries", err);
@@ -69,35 +75,73 @@ export default function Batteries() {
 
   async function loadBatches() {
     try {
-      const res = await client.get("/battery-batches/");
+      const res = await client.get("/api/battery-batches/");
       setBatches(res.data.results || res.data);
     } catch (err) {
       console.error("Failed to load batches", err);
     }
   }
 
+  async function loadVendors() {
+    try {
+      const res = await client.get("/api/vendors/");
+      const allVendors = res.data.results || res.data;
+      
+      // FIX: Sirf APPROVED vendors ko filter karna
+      const approvedVendors = allVendors.filter(
+        (v) => v.status?.toUpperCase() === "APPROVED"
+      );
+      setVendors(approvedVendors);
+    } catch (err) {
+      console.error("Failed to load vendors", err);
+    }
+  }
+
   useEffect(() => {
     loadBatteries();
     loadBatches();
+    loadVendors();
   }, [statusFilter]);
 
-  async function generateQr(id) {
-    if (!isAdmin) return;
+  const getQrCodeUrl = (text) => {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(text)}`;
+  };
+
+  const handleStatusChange = async (batteryId, newStatus) => {
     try {
-      await client.post(`/batteries/${id}/generate_qr/`);
-      loadBatteries();
+      await client.patch(`/api/batteries/${batteryId}/`, { status: newStatus });
+      setBatteries((prev) =>
+        prev.map((b) => (b.id === batteryId ? { ...b, status: newStatus } : b))
+      );
     } catch (err) {
-      alert("Failed to generate QR");
+      console.error("Failed to update status:", err.response?.data);
+      alert("Failed to update battery status.");
     }
-  }
+  };
+
+  const handleVendorAssign = async (batteryId, vendorId) => {
+    try {
+      await client.patch(`/api/batteries/${batteryId}/`, { 
+        vendor: vendorId ? parseInt(vendorId, 10) : null,
+        status: vendorId ? "ASSIGNED_VENDOR" : "IN_STOCK"
+      });
+      loadBatteries();
+      alert("Battery vendor assignment updated successfully!");
+    } catch (err) {
+      console.error("Failed to assign vendor:", err.response?.data);
+      alert("Failed to assign vendor to battery.");
+    }
+  };
 
   async function generateFromBatch(id) {
     if (!isAdmin) return;
     try {
-      await client.post(`/battery-batches/${id}/generate_batteries/`);
+      await client.post(`/api/battery-batches/${id}/generate_batteries/`);
       loadBatches();
       loadBatteries();
+      alert("Batteries generated from batch successfully!");
     } catch (err) {
+      console.error("Batch generation error:", err.response?.data || err);
       alert("Failed to generate batteries from batch");
     }
   }
@@ -129,7 +173,7 @@ export default function Batteries() {
         sample_serial_number: sampleSerial,
       };
 
-      await client.post("/battery-batches/", payload);
+      await client.post("/api/battery-batches/", payload);
       alert("Battery Batch created successfully!");
       setShowBatchModal(false);
       setBatchForm({
@@ -170,7 +214,7 @@ export default function Batteries() {
     <div>
       <PageHeader
         title="Battery Management"
-        subtitle="Batch-wise creation, individual battery tracking, QR codes and lifecycle status."
+        subtitle="Batch-wise creation, individual battery tracking, vendor assignments and lifecycle status."
         action={
           isAdmin ? (
             <Button variant="primary" onClick={() => setShowBatchModal(true)}>
@@ -212,19 +256,7 @@ export default function Batteries() {
               className="w-56"
             >
               <option value="">All statuses</option>
-              {[
-                "ADDED",
-                "IN_STOCK",
-                "ASSIGNED_VENDOR",
-                "SOLD",
-                "ASSIGNED_CUSTOMER",
-                "INSTALLED",
-                "IN_SERVICE",
-                "RETURNED",
-                "DAMAGED",
-                "REPLACED",
-                "INACTIVE",
-              ].map((s) => (
+              {allStatuses.map((s) => (
                 <option key={s} value={s}>
                   {s.replaceAll("_", " ")}
                 </option>
@@ -238,54 +270,78 @@ export default function Batteries() {
                 <tr>
                   <th className="text-left font-medium px-5 py-3">Battery ID</th>
                   <th className="text-left font-medium px-5 py-3">Serial No.</th>
-                  <th className="text-left font-medium px-5 py-3">Batch</th>
-                  <th className="text-left font-medium px-5 py-3">G-Code</th>
+                  <th className="text-left font-medium px-5 py-3">Assigned Vendor</th>
                   <th className="text-left font-medium px-5 py-3">Status</th>
                   <th className="text-right font-medium px-5 py-3">Actions & QR</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-black/[0.05]">
-                {batteries.map((b) => (
-                  <tr key={b.id} className="hover:bg-surface/60">
-                    <td className="px-5 py-3 font-mono text-xs font-medium text-ink">
-                      {b.battery_id}
-                    </td>
-                    <td className="px-5 py-3 font-mono text-xs font-semibold text-blue-600">
-                      {b.serial_number || "—"}
-                    </td>
-                    <td className="px-5 py-3 text-muted">
-                      {b.batch_number || b.batch?.batch_number || "—"}
-                    </td>
-                    <td className="px-5 py-3 text-muted">{b.g_code || "—"}</td>
-                    <td className="px-5 py-3">
-                      <StatusBadge status={b.status} />
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {b.qr_code_image && (
+                {batteries.map((b) => {
+                  const serialText = b.serial_number || b.battery_id;
+                  const qrImage = b.qr_code_image || getQrCodeUrl(serialText);
+                  const currentVendorId = b.vendor?.id || b.vendor || "";
+
+                  return (
+                    <tr key={b.id} className="hover:bg-surface/60">
+                      <td className="px-5 py-3 font-mono text-xs font-medium text-ink">
+                        {b.battery_id}
+                      </td>
+                      <td className="px-5 py-3 font-mono text-xs font-semibold text-blue-600">
+                        {b.serial_number || "—"}
+                      </td>
+                      <td className="px-5 py-3">
+                        {isAdmin ? (
+                          <select
+                            value={currentVendorId}
+                            onChange={(e) => handleVendorAssign(b.id, e.target.value)}
+                            className="px-2.5 py-1 rounded-md text-xs font-medium border border-black/10 bg-white text-ink focus:outline-none focus:ring-1 focus:ring-emerald-500 w-44 truncate"
+                          >
+                            <option value="">-- Select Approved Vendor --</option>
+                            {vendors.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.business_name} ({v.city || "N/A"})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-muted">
+                            {b.vendor_name || b.vendor?.business_name || "Unassigned"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        {isAdmin ? (
+                          <select
+                            value={b.status}
+                            onChange={(e) => handleStatusChange(b.id, e.target.value)}
+                            className="px-2.5 py-1 rounded-md text-xs font-semibold border border-black/10 bg-white text-ink focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          >
+                            {allStatuses.map((s) => (
+                              <option key={s} value={s}>
+                                {s.replaceAll("_", " ")}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <StatusBadge status={b.status} />
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => setSelectedQrBattery(b)}
+                            onClick={() => setSelectedQrBattery({ ...b, qr_code_image: qrImage })}
                             className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
                           >
                             <Eye size={13} /> View QR
                           </button>
-                        )}
-                        {isAdmin && (
-                          <button
-                            onClick={() => generateQr(b.id)}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-emerald-dark hover:underline"
-                          >
-                            <QrCode size={13} />{" "}
-                            {b.qr_code_image ? "Regenerate" : "Generate"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {batteries.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center text-muted py-10">
+                    <td colSpan={5} className="text-center text-muted py-10">
                       No batteries found.
                     </td>
                   </tr>
@@ -386,7 +442,6 @@ export default function Batteries() {
                 </div>
               </div>
 
-              {/* Dynamic Guarantee (G) and Warranty (W) Inputs */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1">Guarantee Years (...G)</label>
@@ -438,7 +493,6 @@ export default function Batteries() {
                 </div>
               </div>
 
-              {/* LIVE SERIAL PREVIEW */}
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 mt-2">
                 <span className="text-[11px] text-gray-500 font-medium block">
                   Generated Serial Preview:

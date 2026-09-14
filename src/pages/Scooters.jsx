@@ -38,24 +38,25 @@ export default function Scooters() {
   const [form, setForm] = useState(initialFormState);
 
   const fetchDropdowns = () => {
+    // Explicitly using /api/ prefix to ensure correct routing with client baseURL
     Promise.all([
-      client.get("/customers/"),
-      client.get("/vendors/"),
-      client.get("/batteries/?status=IN_STOCK"),
+      client.get("/api/customers/"),
+      client.get("/api/vendors/"),
+      client.get("/api/batteries/?status=IN_STOCK"),
     ])
       .then(([c, v, b]) => {
         setCustomers(c.data.results || c.data);
         setVendors(v.data.results || v.data);
         setBatteries(b.data.results || b.data);
       })
-      .catch((e) => console.error("Failed to load dropdown data:", e));
+      .catch((e) => console.error("Failed to load dropdown data:", e.response?.data || e.message));
   };
 
   const load = () => {
     client
-      .get("/scooters/")
+      .get("/api/scooters/")
       .then((r) => setItems(r.data.results || r.data))
-      .catch((e) => console.error("Failed to load scooters:", e));
+      .catch((e) => console.error("Failed to load scooters:", e.response?.data || e.message));
     
     fetchDropdowns();
   };
@@ -68,13 +69,14 @@ export default function Scooters() {
     setErr("");
     setForm(initialFormState);
     setOpen(true);
+    fetchDropdowns(); // Refresh dropdowns when opening modal
   };
 
   const save = async (e) => {
     e.preventDefault();
     setErr("");
     try {
-      await client.post("/scooters/", {
+      await client.post("/api/scooters/", {
         ...form,
         customer: form.customer || null,
         vendor: form.vendor || null,
@@ -101,11 +103,11 @@ export default function Scooters() {
     }
 
     try {
-      await client.post(`/scooters/${assign.id}/assign_battery/`, {
+      await client.post(`/api/scooters/${assign.id}/assign_battery/`, {
         battery_id: Number(assign.battery),
       });
       setAssign(null);
-      load(); // Scooter list + Available batteries list update hongi
+      load(); 
     } catch (e) {
       setErr(
         typeof e.response?.data === "object"
@@ -180,6 +182,7 @@ export default function Scooters() {
                     onClick={() => {
                       setErr("");
                       setAssign({ ...s, battery: "" });
+                      fetchDropdowns();
                     }}
                   >
                     {s.installed_battery ? "Replace Battery" : "Assign Battery"}
@@ -255,7 +258,7 @@ export default function Scooters() {
                 <option value="">None</option>
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.business_name}
+                    {v.business_name || v.name || `Vendor #${v.id}`}
                   </option>
                 ))}
               </Select>

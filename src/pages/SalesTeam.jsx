@@ -23,9 +23,9 @@ export default function SalesTeam() {
 
   function fetchTeam() {
     client
-      .get("/sales-team-summary/")
-      .then((r) => setTeam(r.data))
-      .catch(() => {});
+      .get("/api/sales-team-summary/")
+      .then((r) => setTeam(r.data.results || r.data))
+      .catch((e) => console.error("Failed to fetch sales team:", e));
   }
 
   async function handleCreateSalesperson(e) {
@@ -34,7 +34,7 @@ export default function SalesTeam() {
     setLoading(true);
 
     try {
-      await client.post("/users/", {
+      await client.post("/api/users/", {
         username: form.username,
         first_name: form.first_name,
         last_name: form.last_name,
@@ -68,7 +68,7 @@ export default function SalesTeam() {
     }
   }
 
-  const sorted = [...team].sort((a, b) => b.won_deals - a.won_deals);
+  const sorted = Array.isArray(team) ? [...team].sort((a, b) => (b.won_deals || 0) - (a.won_deals || 0)) : [];
 
   return (
     <div>
@@ -98,7 +98,7 @@ export default function SalesTeam() {
           </thead>
           <tbody className="divide-y divide-black/[0.05]">
             {sorted.map((s, i) => (
-              <tr key={s.id} className="hover:bg-surface/60">
+              <tr key={s.id || i} className="hover:bg-surface/60">
                 <td className="px-5 py-3">
                   {i === 0 ? (
                     <Trophy size={15} className="text-amber" />
@@ -106,21 +106,23 @@ export default function SalesTeam() {
                     <span className="text-muted text-xs">#{i + 1}</span>
                   )}
                 </td>
-                <td className="px-5 py-3 font-medium text-ink">{s.name}</td>
+                <td className="px-5 py-3 font-medium text-ink">
+                  {s.name || `${s.first_name || ""} ${s.last_name || ""}`.trim() || s.username || "—"}
+                </td>
                 <td className="px-5 py-3 text-muted font-mono text-xs">{s.employee_id || "—"}</td>
-                <td className="px-5 py-3 text-muted">{s.assigned_vendors}</td>
-                <td className="px-5 py-3 text-muted">{s.assigned_customers}</td>
-                <td className="px-5 py-3 text-muted">{s.coupons_generated}</td>
+                <td className="px-5 py-3 text-muted">{s.assigned_vendors || 0}</td>
+                <td className="px-5 py-3 text-muted">{s.assigned_customers || 0}</td>
+                <td className="px-5 py-3 text-muted">{s.coupons_generated || 0}</td>
                 <td className="px-5 py-3 text-muted">
-                  <span className="text-emerald-dark font-medium">{s.won_deals}</span> /{" "}
-                  <span className="text-coral font-medium">{s.lost_deals}</span>
+                  <span className="text-emerald-dark font-medium">{s.won_deals || 0}</span> /{" "}
+                  <span className="text-coral font-medium">{s.lost_deals || 0}</span>
                 </td>
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-2">
-                    <div className="charge-bar w-16">
-                      <span style={{ width: `${s.conversion_rate}%` }} />
+                    <div className="charge-bar w-16 bg-black/5 h-2 rounded-full overflow-hidden">
+                      <div className="bg-emerald h-full" style={{ width: `${s.conversion_rate || 0}%` }} />
                     </div>
-                    <span className="text-xs text-muted">{s.conversion_rate}%</span>
+                    <span className="text-xs text-muted">{s.conversion_rate || 0}%</span>
                   </div>
                 </td>
               </tr>
