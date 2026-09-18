@@ -7,6 +7,7 @@ export default function Products() {
   const [products, setProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(false);
   
   const [form, setForm] = useState({
     name: "",
@@ -24,12 +25,16 @@ export default function Products() {
   });
 
   const fetchProducts = () => {
-    client.get("/api/products/")
+    client.get("/products/")
       .then((res) => {
-        const data = res.data.results || res.data;
-        setProducts(data);
+        const data = res.data;
+        const list = Array.isArray(data) ? data : (data.results || data.data || []);
+        setProducts(list);
       })
-      .catch((err) => console.error("Error loading products:", err));
+      .catch((err) => {
+        console.error("Error loading products:", err);
+        setProducts([]);
+      });
   };
 
   useEffect(() => {
@@ -39,7 +44,7 @@ export default function Products() {
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this product?")) {
       try {
-        await client.delete(`/api/products/${id}/`);
+        await client.delete(`/products/${id}/`);
         fetchProducts();
       } catch (err) {
         alert("Failed to delete product.");
@@ -49,30 +54,38 @@ export default function Products() {
 
   const getImageUrl = (img) => {
     if (!img) return null;
-    if (typeof img === "object") return URL.createObjectURL(img);
-    if (/^https?:\/\//i.test(img)) return img;
-
-    const cleanImg = img.startsWith("/") ? img : `/${img}`;
-    const finalPath = cleanImg.startsWith("/media/") ? cleanImg : `/media${cleanImg}`;
-    
-    return `http://localhost:8000${finalPath}`;
+    if (typeof img === "object") {
+      try {
+        return URL.createObjectURL(img);
+      } catch (e) {
+        return null;
+      }
+    }
+    if (typeof img === "string") {
+      if (/^https?:\/\//i.test(img)) return img;
+      const cleanImg = img.startsWith("/") ? img : `/${img}`;
+      const finalPath = cleanImg.startsWith("/media/") ? cleanImg : `/media${cleanImg}`;
+      return `http://localhost:8000${finalPath}`;
+    }
+    return null;
   };
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
     
     const formData = new FormData();
-    formData.append("name", form.name);
+    formData.append("name", form.name || "");
     formData.append("sku", form.sku || `SKU-${Date.now()}`);
     formData.append("model_number", form.model_number || "");
-    formData.append("category", form.category);
+    formData.append("category", form.category || "SCOOTER");
     formData.append("description", form.description || "");
     formData.append("specifications", form.specifications || "");
     formData.append("features", form.features || "");
-    formData.append("public_price", form.public_price || 0);
-    formData.append("vendor_price", form.vendor_price || 0);
-    formData.append("availability", form.availability);
-    formData.append("status", form.status);
+    formData.append("public_price", form.public_price ? Number(form.public_price) : 0);
+    formData.append("vendor_price", form.vendor_price ? Number(form.vendor_price) : 0);
+    formData.append("availability", form.availability !== undefined ? form.availability : true);
+    formData.append("status", form.status || "ACTIVE");
     
     if (form.image instanceof File) {
       formData.append("image", form.image);
@@ -80,19 +93,34 @@ export default function Products() {
 
     try {
       if (form.id) {
-        await client.put(`/api/products/${form.id}/`, formData, {
+        await client.put(`/products/${form.id}/`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
       } else {
-        await client.post(`/api/products/`, formData, {
+        await client.post("/products/", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
       }
       setIsEditing(false);
       fetchProducts();
+      alert("Product saved successfully!");
     } catch (err) {
       console.error("Save product error details:", err.response?.data);
-      alert("Failed to save product: " + JSON.stringify(err.response?.data || err.message));
+      const errorData = err.response?.data;
+      let errorMsg = "Failed to save product.";
+      
+      if (errorData) {
+        if (typeof errorData === "object") {
+          errorMsg = Object.entries(errorData)
+            .map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg.join(", ") : msg}`)
+            .join("\n");
+        } else {
+          errorMsg = String(errorData);
+        }
+      }
+      alert(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -129,12 +157,11 @@ export default function Products() {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {products.map((p) => {
+        {Array.isArray(products) && products.map((p) => {
           const imgUrl = getImageUrl(p.image);
           return (
             <Card key={p.id} className="p-0 overflow-hidden bg-white border border-black/[0.06] flex flex-col justify-between">
               <div>
-                {/* Image Container with object-contain to prevent cutting */}
                 <div className="h-56 bg-surface relative flex items-center justify-center overflow-hidden">
                   {imgUrl ? (
                     <img 
@@ -170,13 +197,28 @@ export default function Products() {
               </div>
 
               <div className="border-t border-black/5 p-3 grid grid-cols-3 gap-2 bg-surface/50">
-                <button onClick={() => setSelectedProduct(p)} className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-white rounded border hover:bg-surface">
+                <button 
+                  type="button" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedProduct(p);
+                  }} 
+                  className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-white rounded border hover:bg-surface cursor-pointer"
+                >
                   <Eye size={13} /> View
                 </button>
-                <button onClick={() => { setSelectedProduct(null); setForm(p); setIsEditing(true); }} className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-white rounded border hover:bg-surface">
+                <button 
+                  type="button"
+                  onClick={() => { setSelectedProduct(null); setForm(p); setIsEditing(true); }} 
+                  className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-white rounded border hover:bg-surface"
+                >
                   <Edit size={13} /> Edit
                 </button>
-                <button onClick={() => handleDelete(p.id)} className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-coral/10 text-coral rounded hover:bg-coral/20">
+                <button 
+                  type="button"
+                  onClick={() => handleDelete(p.id)} 
+                  className="flex items-center justify-center gap-1 text-xs font-medium py-1.5 px-2 bg-coral/10 text-coral rounded hover:bg-coral/20"
+                >
                   <Trash2 size={13} /> Delete
                 </button>
               </div>
@@ -185,6 +227,7 @@ export default function Products() {
         })}
       </div>
 
+      {/* Add / Edit Modal */}
       {isEditing && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 relative shadow-2xl">
@@ -199,7 +242,7 @@ export default function Products() {
             <form onSubmit={handleFormSubmit} className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Product Name</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Product Name *</label>
                   <input required className="w-full border rounded-lg p-2.5" placeholder="e.g. Voltra S1 Pro" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} />
                 </div>
                 <div>
@@ -225,11 +268,11 @@ export default function Products() {
 
               <div className="grid grid-cols-2 gap-3 bg-surface p-3 rounded-xl border border-black/5">
                 <div>
-                  <label className="block text-xs font-semibold text-ink mb-1">Public Visitor Price (₹)</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Public Visitor Price (₹) *</label>
                   <input type="number" step="0.01" required className="w-full border rounded-lg p-2.5 bg-white" placeholder="0.00" value={form.public_price} onChange={(e) => setForm({...form, public_price: e.target.value})} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-emerald-dark mb-1">Registered Vendor Price (₹)</label>
+                  <label className="block text-xs font-semibold text-emerald-dark mb-1">Registered Vendor Price (₹) *</label>
                   <input type="number" step="0.01" required className="w-full border rounded-lg p-2.5 bg-white" placeholder="0.00" value={form.vendor_price} onChange={(e) => setForm({...form, vendor_price: e.target.value})} />
                 </div>
               </div>
@@ -251,14 +294,15 @@ export default function Products() {
                 <textarea className="w-full border rounded-lg p-2.5" rows={2} placeholder="Fast charging&#10;120km range" value={form.features || ""} onChange={(e) => setForm({...form, features: e.target.value})} />
               </div>
 
-              <button type="submit" className="w-full bg-ink text-volt py-3 rounded-xl font-medium mt-2 hover:opacity-90 transition-opacity">
-                Save Product
+              <button type="submit" disabled={loading} className="w-full bg-ink text-volt py-3 rounded-xl font-medium mt-2 hover:opacity-90 transition-opacity disabled:opacity-50">
+                {loading ? "Saving Product..." : "Save Product"}
               </button>
             </form>
           </div>
         </div>
       )}
 
+      {/* View Details Modal */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 relative shadow-2xl">
@@ -268,10 +312,13 @@ export default function Products() {
             
             <h2 className="text-xl font-semibold font-display mb-3">{selectedProduct.name}</h2>
             
-            {/* Modal Image Container with object-contain */}
             <div className="h-64 bg-surface rounded-xl overflow-hidden flex items-center justify-center mb-4 relative">
               {selectedProduct.image ? (
-                <img src={getImageUrl(selectedProduct.image)} alt={selectedProduct.name} className="absolute inset-0 w-full h-full object-contain p-2" />
+                <img 
+                  src={getImageUrl(selectedProduct.image)} 
+                  alt={selectedProduct.name} 
+                  className="absolute inset-0 w-full h-full object-contain p-2" 
+                />
               ) : (
                 <Package size={56} className="text-emerald/30" />
               )}
@@ -304,6 +351,12 @@ export default function Products() {
                 <span className="text-xs text-muted block mb-1">Description</span>
                 <p className="text-muted bg-surface p-3 rounded-lg">{selectedProduct.description || "No description provided."}</p>
               </div>
+              {selectedProduct.features && (
+                <div>
+                  <span className="text-xs text-muted block mb-1">Features</span>
+                  <p className="text-muted bg-surface p-3 rounded-lg whitespace-pre-line">{selectedProduct.features}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -36,8 +36,15 @@ export default function Sales() {
   const load = () => {
     client
       .get("/sales/")
-      .then((r) => setItems(r.data.results || r.data))
-      .catch((e) => console.error("Failed to load sales:", e));
+      .then((r) => {
+        const data = r.data;
+        const list = Array.isArray(data) ? data : (data.results || data.data || []);
+        setItems(list);
+      })
+      .catch((e) => {
+        console.error("Failed to load sales:", e);
+        setItems([]);
+      });
   };
 
   useEffect(() => {
@@ -48,11 +55,20 @@ export default function Sales() {
       client.get("/products/"),
     ])
       .then(([v, c, p]) => {
-        setVendors(v.data.results || v.data);
-        setCustomers(c.data.results || c.data);
-        setProducts(p.data.results || p.data);
+        const vData = v.data;
+        const cData = c.data;
+        const pData = p.data;
+
+        setVendors(Array.isArray(vData) ? vData : (vData.results || vData.data || []));
+        setCustomers(Array.isArray(cData) ? cData : (cData.results || cData.data || []));
+        setProducts(Array.isArray(pData) ? pData : (pData.results || pData.data || []));
       })
-      .catch((e) => console.error("Failed to load initial dropdown data:", e));
+      .catch((e) => {
+        console.error("Failed to load initial dropdown data:", e);
+        setVendors([]);
+        setCustomers([]);
+        setProducts([]);
+      });
   }, []);
 
   const handleOpenModal = () => {
@@ -82,6 +98,11 @@ export default function Sales() {
       );
     }
   };
+
+  const safeItems = Array.isArray(items) ? items : [];
+  const safeVendors = Array.isArray(vendors) ? vendors : [];
+  const safeCustomers = Array.isArray(customers) ? customers : [];
+  const safeProducts = Array.isArray(products) ? products : [];
 
   return (
     <div className="space-y-6">
@@ -118,7 +139,7 @@ export default function Sales() {
             </tr>
           </thead>
           <tbody className="divide-y divide-black/5">
-            {items.map((s) => (
+            {safeItems.map((s) => (
               <tr key={s.id} className="hover:bg-surface/50">
                 <td className="px-4 py-3 font-mono font-semibold text-ink">
                   {s.sale_number}
@@ -138,7 +159,7 @@ export default function Sales() {
                 </td>
               </tr>
             ))}
-            {items.length === 0 && (
+            {safeItems.length === 0 && (
               <tr>
                 <td colSpan={8} className="text-center py-8 text-muted">
                   No sales records found.
@@ -170,7 +191,7 @@ export default function Sales() {
                 onChange={(e) => setForm({ ...form, vendor: e.target.value })}
               >
                 <option value="">Select Vendor</option>
-                {vendors.map((v) => (
+                {safeVendors.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.business_name}
                   </option>
@@ -184,7 +205,7 @@ export default function Sales() {
                 onChange={(e) => setForm({ ...form, customer: e.target.value })}
               >
                 <option value="">Select Customer</option>
-                {customers.map((c) => (
+                {safeCustomers.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name || c.first_name || `Customer #${c.id}`}
                   </option>
@@ -198,7 +219,7 @@ export default function Sales() {
                 onChange={(e) => setForm({ ...form, product: e.target.value })}
               >
                 <option value="">Select Product</option>
-                {products.map((p) => (
+                {safeProducts.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>

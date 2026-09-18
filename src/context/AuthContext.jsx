@@ -1,4 +1,10 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+
 import client from "../api/client";
 
 const AuthContext = createContext();
@@ -7,11 +13,11 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load User Data
   const fetchUser = async () => {
-    const token = 
-      localStorage.getItem("access_token") || 
-      localStorage.getItem("token");
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("token") ||
+      localStorage.getItem("access");
 
     if (!token) {
       setUser(null);
@@ -20,14 +26,22 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      const res = await client.get("/api/auth/me/", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setUser(res.data);
-    } catch (err) {
-      console.error("Auth check failed:", err);
+      // Normalize or use standard path handled by client alias if needed
+      const response = await client.get("/users/me/");
+
+      setUser(response.data);
+      localStorage.setItem("user", JSON.stringify(response.data));
+    } catch (error) {
+      console.error("Auth check failed:", error);
+      
       localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
       localStorage.removeItem("token");
+      localStorage.removeItem("access");
+      localStorage.removeItem("user");
+      localStorage.removeItem("role");
+      localStorage.removeItem("user_id");
+
       setUser(null);
     } finally {
       setLoading(false);
@@ -38,45 +52,72 @@ export function AuthProvider({ children }) {
     fetchUser();
   }, []);
 
-  // Updated to accept (username, password, role) directly
-  const login = async (username, password, selectedRole) => {
+  const login = async (identifier, password, role) => {
+    // Correct endpoint mapping based on typical django-rest configuration or aliases
+    const response = await client.post("/auth/login/", {
+      username: identifier,
+      password,
+      role,
+    });
 
-    const res = await client.post("/api/auth/login/", {username, password});
-    
-    // Check all common JWT key names
-    const token = res.data.access || res.data.token || res.data.access_token;
-    
-    if (!token) throw new Error("Authentication failed");
-    
+    const access =
+      response.data.access ||
+      response.data.token ||
+      response.data.access_token;
 
-      localStorage.setItem("access_token", token);
+    const refresh =
+      response.data.refresh ||
+      response.data.refresh_token;
 
-      client.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      
-      // Fetch user profile after storing token
-      const userRes = await client.get("/api/auth/me/");
-      const actualUser = userRes.data;
-       
-       if (selectedRole && actualUser.role!==selectedRole){
-        localStorage.removeItem("access_token");
-        delete client.defaults.headers.common["Authorization"];
-        throw new Error(`Account mismatch: This user is not registered as ${selectedRole}.`);
+    if (!access) {
+      throw new Error("Authentication failed: No token received.");
+    }
 
-       }
-       setUser(actualUser);
-       return actualUser;
+    localStorage.setItem("access_token", access);
+    if (refresh) {
+      localStorage.setItem("refresh_token", refresh);
+    }
+
+    // Fetch user details right after successful login
+    const userResponse = await client.get("/users/me/");
+    const actualUser = userResponse.data;
+
+    localStorage.setItem("role", actualUser.role || role);
+    localStorage.setItem("user", JSON.stringify(actualUser));
+    if (actualUser.id) {
+      localStorage.setItem("user_id", actualUser.id);
+    }
+
+    setUser(actualUser);
+    return actualUser;
   };
 
   const logout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("token");
-    localStorage.removeItem("refresh_token");
-    delete client.defaults.headers.common["Authorization"];
+    localStorage.clear();
     setUser(null);
   };
 
+  const can = (resource, action = "view") => {
+    if (!user) return false;
+    if (user.role === "ADMIN" || user.is_superuser || user.role === "SALES") {
+      return true;
+    }
+
+    const permissions = user.custom_role_details?.permissions || {};
+    return permissions[resource]?.includes(action) || false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, fetchUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        fetchUser,
+        can,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

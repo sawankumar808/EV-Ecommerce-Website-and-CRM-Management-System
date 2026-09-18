@@ -18,7 +18,6 @@ export default function Vendors() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
 
-  // Debounced/Safe Loader
   const loadVendors = useCallback(async () => {
     setLoading(true);
     const params = {};
@@ -26,8 +25,7 @@ export default function Vendors() {
     if (search.trim()) params.search = search.trim();
 
     try {
-      // FIX: Added /api/ prefix
-      const res = await client.get("/api/vendors/", { params });
+      const res = await client.get("/vendors/", { params });
       let vendorList = [];
       if (Array.isArray(res.data)) {
         vendorList = res.data;
@@ -48,12 +46,21 @@ export default function Vendors() {
   const loadSalesUsers = useCallback(async () => {
     if (!isAdmin) return;
     try {
-      // FIX: Added /api/ prefix
-      const res = await client.get("/api/users/?role=SALES");
-      let users = Array.isArray(res.data) ? res.data : (res.data.results || []);
-      setSalesUsers(users);
+      // Using sales-team-summary which is already aliased in client.js to fetch team members correctly
+      const res = await client.get("/sales-team-summary/");
+      let allUsers = [];
+      const data = res?.data;
+      if (Array.isArray(data)) {
+        allUsers = data;
+      } else if (data?.results && Array.isArray(data.results)) {
+        allUsers = data.results;
+      } else if (data?.data && Array.isArray(data.data)) {
+        allUsers = data.data;
+      }
+      setSalesUsers(allUsers);
     } catch (err) {
       console.error("Failed to fetch sales users", err);
+      setSalesUsers([]);
     }
   }, [isAdmin]);
 
@@ -74,8 +81,7 @@ export default function Vendors() {
       e.stopPropagation();
     }
     try {
-      // FIX: Added /api/ prefix
-      await client.post(`/api/vendors/${id}/${action}/`);
+      await client.post(`/vendors/${id}/${action}/`);
       loadVendors();
     } catch (err) {
       console.error(`Failed to execute ${action}`, err);
@@ -86,14 +92,14 @@ export default function Vendors() {
     if (e) e.preventDefault();
     if (!selectedVendorForAssign) return;
     try {
-      // FIX: Added /api/ prefix
-      await client.patch(`/api/vendors/${selectedVendorForAssign.id}/`, {
+      await client.patch(`/vendors/${selectedVendorForAssign.id}/`, {
         assigned_salesperson: assignedSalesId ? parseInt(assignedSalesId) : null,
       });
       setSelectedVendorForAssign(null);
       loadVendors();
     } catch (err) {
       console.error("Failed to assign salesperson", err);
+      alert("Failed to assign salesperson.");
     }
   };
 
@@ -109,7 +115,7 @@ export default function Vendors() {
     }
     const found = salesUsers.find((u) => u.id === sp);
     if (found) {
-      return found.first_name ? `${found.first_name} ${found.last_name || ""}`.trim() : found.username;
+      return found.name || (found.first_name ? `${found.first_name} ${found.last_name || ""}`.trim() : found.username);
     }
     return `Sales #${sp}`;
   };
@@ -177,7 +183,6 @@ export default function Vendors() {
                 </td>
                 <td className="px-4 py-3 text-muted font-mono text-xs">{v.gst_number || "—"}</td>
 
-                {/* Assigned Sales Executive */}
                 <td className="px-4 py-3 text-muted text-xs">
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium text-ink">{getSalespersonName(v)}</span>
@@ -211,7 +216,6 @@ export default function Vendors() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-1.5">
-                    {/* View Details Route Fixed */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -227,7 +231,6 @@ export default function Vendors() {
 
                     {isAdmin && (
                       <>
-                        {/* Edit Vendor Route Fixed */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -241,7 +244,6 @@ export default function Vendors() {
                           <Edit3 size={14} />
                         </button>
 
-                        {/* Approve */}
                         {v.status !== "APPROVED" && (
                           <button
                             type="button"
@@ -253,7 +255,6 @@ export default function Vendors() {
                           </button>
                         )}
 
-                        {/* Request Changes */}
                         {v.status === "PENDING" && (
                           <button
                             type="button"
@@ -265,7 +266,6 @@ export default function Vendors() {
                           </button>
                         )}
 
-                        {/* Reject */}
                         {v.status !== "REJECTED" && (
                           <button
                             type="button"
@@ -277,7 +277,6 @@ export default function Vendors() {
                           </button>
                         )}
 
-                        {/* Suspend / Activate */}
                         {v.status === "SUSPENDED" ? (
                           <button
                             type="button"
@@ -300,7 +299,6 @@ export default function Vendors() {
                       </>
                     )}
 
-                    {/* View History Route Fixed */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -359,7 +357,7 @@ export default function Vendors() {
                 <option value="">Unassigned</option>
                 {salesUsers.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.first_name ? `${u.first_name} ${u.last_name || ""}` : u.username} (
+                    {u.name || (u.first_name ? `${u.first_name} ${u.last_name || ""}` : u.username)} (
                     {u.email || u.mobile_number || "Sales"})
                   </option>
                 ))}
