@@ -12,17 +12,13 @@ import client from "../../api/client";
 
 function getImageUrl(img) {
   if (!img) return null;
-
-  if (/^https?:\/\//i.test(img)) {
-    return img;
-  }
+  if (/^https?:\/\//i.test(img)) return img;
 
   const apiBase =
     import.meta.env.VITE_API_URL ||
     "http://localhost:8000/api";
 
   const backendOrigin = apiBase.replace(/\/api\/?$/, "");
-
   return `${backendOrigin}${img.startsWith("/") ? "" : "/"}${img}`;
 }
 
@@ -32,7 +28,6 @@ export default function ProductDetail() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  // Buy Now Modal States
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
   const [visitorForm, setVisitorForm] = useState({
     name: "",
@@ -47,18 +42,31 @@ export default function ProductDetail() {
   useEffect(() => {
     setLoading(true);
 
-    client
-      .get(`/api/products/${id}/`)
-      .then((r) => {
-        setProduct(r.data);
-      })
-      .catch((err) => {
-        console.error("Failed to load product:", err);
-        setProduct(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    // Smart Fallback Fetcher: Tries Django's possible endpoints sequentially
+    const fetchProduct = async () => {
+      const candidateEndpoints = [
+        `/products/${id}/`,
+        `/products/products/${id}/`,
+        `/public-products/${id}/`,
+      ];
+
+      for (const endpoint of candidateEndpoints) {
+        try {
+          const res = await client.get(endpoint);
+          if (res.data) {
+            setProduct(res.data);
+            return; // Success, stop trying!
+          }
+        } catch (err) {
+          // Continue to next endpoint if 404
+        }
+      }
+      setProduct(null);
+    };
+
+    fetchProduct().finally(() => {
+      setLoading(false);
+    });
   }, [id]);
 
   const handleBuySubmit = async (e) => {
@@ -68,8 +76,7 @@ export default function ProductDetail() {
     setSuccessMsg("");
 
     try {
-      // Normal visitor purchase / lead creation endpoint (Jo admin aur sales dash par alert/notification generate karega)
-      await client.post("/api/orders/public_purchase/", {
+      await client.post("/orders/public_purchase/", {
         product: product.id,
         visitor_name: visitorForm.name,
         visitor_mobile: visitorForm.mobile,
@@ -77,8 +84,7 @@ export default function ProductDetail() {
         notes: visitorForm.notes,
         quantity: 1,
       }).catch(() => {
-        // Fallback agar public order endpoint alag ho
-        return client.post("/api/leads/", {
+        return client.post("/leads/", {
           name: visitorForm.name,
           mobile: visitorForm.mobile,
           address: visitorForm.address,
@@ -87,7 +93,7 @@ export default function ProductDetail() {
         });
       });
 
-      setSuccessMsg("Order request placed successfully! Our sales team & admin have been notified with your product details.");
+      setSuccessMsg("Order request placed successfully! Our sales team & admin have been notified.");
       setVisitorForm({ name: "", mobile: "", address: "", notes: "" });
       
       setTimeout(() => {
@@ -95,7 +101,7 @@ export default function ProductDetail() {
         setSuccessMsg("");
       }, 3000);
     } catch (err) {
-      setErrorMsg("Failed to place order. Please try again or contact support.");
+      setErrorMsg("Failed to place order. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -104,7 +110,7 @@ export default function ProductDetail() {
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-16 text-muted">
-        Loading…
+        Loading product details…
       </div>
     );
   }
@@ -112,12 +118,12 @@ export default function ProductDetail() {
   if (!product) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-16 text-center">
-        <p className="text-coral mb-4">
+        <p className="text-coral mb-4 font-medium">
           Product not found.
         </p>
         <Link
           to="/products"
-          className="text-emerald-dark font-medium"
+          className="text-emerald-dark font-medium underline"
         >
           Back to Products
         </Link>
@@ -131,23 +137,20 @@ export default function ProductDetail() {
         .split("\n")
         .filter(Boolean);
 
-  const specs = product.specifications || {};
   const imageUrl = getImageUrl(product.image);
   const publicPrice = product.public_price ?? product.price ?? 0;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-12">
-      {/* BACK */}
       <Link
         to="/products"
-        className="text-sm text-muted flex items-center gap-1.5 mb-6 hover:text-ink"
+        className="text-sm text-muted flex items-center gap-1.5 mb-6 hover:text-ink transition-colors"
       >
         <ArrowLeft size={14} />
         Back to Products
       </Link>
 
       <div className="grid md:grid-cols-2 gap-10">
-        {/* PRODUCT IMAGE */}
         <div className="h-80 bg-white rounded-2xl shadow-sm border border-black/[0.04] flex items-center justify-center overflow-hidden">
           {imageUrl ? (
             <img
@@ -163,7 +166,6 @@ export default function ProductDetail() {
           )}
         </div>
 
-        {/* PRODUCT INFORMATION */}
         <div>
           <span
             className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full mb-3 ${
@@ -212,7 +214,6 @@ export default function ProductDetail() {
             </div>
           )}
 
-          {/* CTA BUTTONS (Buy Now & Vendor Register) */}
           <div className="flex flex-wrap gap-3 mt-7">
             <button
               onClick={() => setIsBuyModalOpen(true)}
@@ -230,7 +231,6 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      {/* BUY NOW POPUP MODAL FOR VISITORS */}
       {isBuyModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
